@@ -3220,7 +3220,7 @@
 
     const typing = addMsg("🤖 AI가 답변을 작성하고 있어요...", "bot typing");
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 25000);   // 25초 넘으면 중단
+    const timer = setTimeout(() => controller.abort(), 45000);   // 45초 넘으면 중단
 
     try {
       const res = await fetch(AI_PROXY_URL, {
@@ -3237,6 +3237,7 @@
       if (!res.ok || !data.answer) throw new Error(data.error || ("HTTP " + res.status));
 
       typing.remove();
+      console.info(`AI 답변: ${data.model || data.source || "?"} (${data.ms || "?"}ms)`);   // 어떤 모델이 답했는지
       addMsg(`<div class="ai-tag">🤖 AI 답변 · 참고용</div><br>${formatAI(data.answer)}`, "bot ai");
       pushLog("user", q);
       pushLog("model", data.answer);
@@ -3245,7 +3246,8 @@
       // AI 연결 실패 → 기본 답변으로 대신 안내 (챗봇이 멈추지 않게)
       console.error("AI 오류:", err);
       typing.remove();
-      addMsg("⚠️ AI 연결에 실패해 기본 안내로 답할게요.<br><br>" +
+      const why = (err.name === "AbortError") ? "AI 답변이 너무 늦어져" : "AI 연결에 실패해";
+      addMsg(`⚠️ ${why} 기본 안내로 답할게요.<br><br>` +
              (botAnswer(q) || fallbackMessage()), "bot");
     } finally {
       clearTimeout(timer);

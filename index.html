@@ -15,6 +15,8 @@
   <!-- AI 모델 실행에 필요한 외부 라이브러리 -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <!-- YOLO 모델 실행 도구 (브라우저에서 ONNX 모델을 돌려줌) -->
+  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.wasm.min.js"></script>
   <!-- QR코드 생성 라이브러리 (1.4.4 버전: 브라우저용 파일이 들어있는 버전) -->
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
   <!-- PDF 결과서용 한글 웹 글꼴 (어느 기기에서나 똑같은 모양으로 나오게) -->
@@ -1086,6 +1088,26 @@
     .batch-pct  { font-size: 16px; font-weight: 900; }
     .batch-arrow { color: var(--text-sub); font-size: 18px; }
 
+    /* YOLO head 탐지 요약 */
+    .yolo-summary { display: none; margin-bottom: 16px; }
+    .ys-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+    .ys-chip {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 6px;
+      text-align: center;
+      background: rgba(255,255,255,0.03);
+    }
+    .ys-chip b { display: block; font-size: 22px; font-weight: 900; line-height: 1.2; }
+    .ys-chip span { font-size: 11px; color: var(--text-sub); }
+    .ys-note { font-size: 11px; color: var(--text-sub); margin-top: 8px; line-height: 1.6; }
+    .tm-title {
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--text-sub);
+      margin: 4px 0 10px;
+    }
+
     /* 상세 결과 화면의 사진 */
     .detail-img {
       width: 100%;
@@ -1337,13 +1359,17 @@
       <div class="top-result" id="topResult">
         <div class="top-result-icon" id="topResultIcon">🍄</div>
         <div class="top-result-text">
-          <div class="top-result-label">최고 신뢰도 진단</div>
+          <div class="top-result-label">최종 진단</div>
           <div class="top-result-name" id="topResultName">-</div>
           <div class="top-result-conf" id="topResultConf">0%</div>
         </div>
       </div>
 
-      <!-- 모든 클래스 게이지 바 (JS로 채워짐) -->
+      <!-- YOLO: 갈반병 head / 정상 head 개수 (JS로 채워짐) -->
+      <div class="yolo-summary" id="yoloSummary"></div>
+
+      <!-- 보조 모델(Teachable Machine): 사진 전체 판정 확률 -->
+      <div class="tm-title" id="tmTitle">📷 사진 전체 판정 (보조 모델 · 푸른곰팡이병 등)</div>
       <div id="resultBars"></div>
 
       <div class="notice-box">
@@ -1597,6 +1623,26 @@
   let model = null;
   let isModelLoaded = false;
 
+  // ────────────────────────────────────────────────────
+  // 🎯 YOLO(head 탐지) 모델 설정
+  //   GitHub 저장소에 올린 best.onnx 를 불러옵니다.
+  //   모델을 다시 학습하면 best.onnx 파일만 바꿔 올리면 됩니다.
+  // ────────────────────────────────────────────────────
+  const YOLO_MODEL_URL = "best.onnx";   // index.html과 같은 위치에 둔 파일 이름
+  const YOLO_IMGSZ = 640;               // 학습할 때의 이미지 크기 (imgsz)와 같아야 함
+  const YOLO_CONF  = 0.30;              // 이 점수 이상인 head만 표시 (높이면 더 엄격)
+  const YOLO_IOU   = 0.60;              // 겹친 박스 정리 기준 (낮추면 겹친 박스를 더 많이 지움)
+
+  // 클래스 순서는 mushroom.yaml의 names와 같아야 함 (0: galban, 1: normal)
+  const YOLO_CLASSES = [
+    { key: "galban", name: "세균성갈반병", short: "갈반병", color: "#ef4444" },
+    { key: "normal", name: "정상",         short: "정상",   color: "#22c55e" }
+  ];
+  const YOLO_DISEASE_CLASS = 0;         // 병해 클래스 번호 (galban)
+
+  let yoloSession = null;               // 불러온 YOLO 모델
+  let yoloReady   = Promise.resolve();  // YOLO 불러오기가 끝날 때까지 기다리는 용도
+
   // 이 앱의 인터넷 주소 (QR코드, PDF 하단에 사용)
   const APP_URL = "https://pehssg.github.io/mushroom-diagnosis/";
 
@@ -1620,22 +1666,167 @@
     renderHistory();  // 저장된 진단 기록 개수 표시
     initChatbot();    // 챗봇 첫 인사말
 
-    try {
-      // Teachable Machine 모델 불러오기
-      model = await tmImage.load(
-        MODEL_URL + "model.json",
-        MODEL_URL + "metadata.json"
-      );
-      isModelLoaded = true;
-      document.getElementById("classCount").textContent =
-        model.getTotalClasses() + "개 클래스";
-      document.getElementById("modelStatus").textContent = "✓ 준비 완료";
-    } catch (err) {
-      console.error("모델 로드 실패:", err);
-      document.getElementById("modelStatus").textContent = "❌ 로드 실패";
-      document.getElementById("modelStatus").style.color = "#f87171";
-    }
+    // 두 모델을 동시에 불러옵니다 (하나가 실패해도 다른 하나는 사용)
+    yoloReady = loadYolo();
+    const tmReady = (async () => {
+      try {
+        model = await tmImage.load(MODEL_URL + "model.json", MODEL_URL + "metadata.json");
+        isModelLoaded = true;
+      } catch (err) {
+        console.error("Teachable Machine 모델 로드 실패:", err);
+      }
+    })();
+    await Promise.all([yoloReady, tmReady]);
+    updateModelStatus();
   });
+
+  /** YOLO 모델 불러오기 */
+  async function loadYolo() {
+    try {
+      if (typeof ort === "undefined") throw new Error("onnxruntime-web을 불러오지 못했습니다");
+      ort.env.wasm.wasmPaths  = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+      ort.env.wasm.numThreads = 1;      // GitHub Pages에서 안정적으로 동작하도록 1개로
+      yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: ["wasm"] });
+    } catch (err) {
+      yoloSession = null;
+      console.warn("YOLO 모델을 불러오지 못했습니다 (보조 모델만 사용):", err);
+    }
+  }
+
+  /** 화면 아래 '모델 상태' 표시 */
+  function updateModelStatus() {
+    const st = document.getElementById("modelStatus");
+    st.textContent = `${yoloSession ? "✓" : "✕"} head 탐지 · ${isModelLoaded ? "✓" : "✕"} 전체 판정`;
+    st.style.color = (yoloSession || isModelLoaded) ? "" : "#f87171";
+    document.getElementById("classCount").textContent =
+      (yoloSession ? "갈반병·정상 head" : "") +
+      (yoloSession && isModelLoaded ? " + " : "") +
+      (isModelLoaded ? model.getTotalClasses() + "개 클래스" : "");
+  }
+
+  // ════════════════════════════════════════════════════
+  // 🎯 YOLO head 탐지
+  // ════════════════════════════════════════════════════
+
+  /** 두 박스가 겹친 정도 (0~1) */
+  function iou(a, b) {
+    const ix = Math.max(0, Math.min(a.x2, b.x2) - Math.max(a.x1, b.x1));
+    const iy = Math.max(0, Math.min(a.y2, b.y2) - Math.max(a.y1, b.y1));
+    const inter = ix * iy;
+    const union = (a.x2 - a.x1) * (a.y2 - a.y1) + (b.x2 - b.x1) * (b.y2 - b.y1) - inter;
+    return union > 0 ? inter / union : 0;
+  }
+
+  /**
+   * 사진 한 장에서 head를 찾습니다.
+   * 돌려주는 값: [{ c: 클래스번호, score: 점수, x1, y1, x2, y2 (원본 사진 좌표) }, ...]
+   */
+  async function runYolo(img) {
+    const S = YOLO_IMGSZ;
+    const w = img.naturalWidth, h = img.naturalHeight;
+
+    // 1) 비율을 유지한 채 S×S 정사각형 안에 넣고 남는 곳은 회색으로 채움 (학습 때와 같은 방식)
+    const r  = Math.min(S / w, S / h);
+    const nw = Math.round(w * r), nh = Math.round(h * r);
+    const padX = (S - nw) / 2, padY = (S - nh) / 2;
+    const cv = document.createElement("canvas");
+    cv.width = S; cv.height = S;
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    ctx.fillStyle = "rgb(114,114,114)";
+    ctx.fillRect(0, 0, S, S);
+    ctx.drawImage(img, padX, padY, nw, nh);
+
+    // 2) 픽셀 → 모델 입력 숫자 (RGB 순서, 0~1, [1,3,S,S])
+    const px = ctx.getImageData(0, 0, S, S).data;
+    const area = S * S;
+    const input = new Float32Array(3 * area);
+    for (let i = 0; i < area; i++) {
+      input[i]            = px[i * 4]     / 255;
+      input[i + area]     = px[i * 4 + 1] / 255;
+      input[i + 2 * area] = px[i * 4 + 2] / 255;
+    }
+
+    // 3) 모델 실행 → 결과 [1, 4+클래스수, 후보수]
+    const feeds = {};
+    feeds[yoloSession.inputNames[0]] = new ort.Tensor("float32", input, [1, 3, S, S]);
+    const out = (await yoloSession.run(feeds))[yoloSession.outputNames[0]];
+    const C = out.dims[1], N = out.dims[2], d = out.data, nc = C - 4;
+
+    // 4) 점수가 기준 이상인 후보만 골라 원본 사진 좌표로 되돌림
+    const cands = [];
+    for (let i = 0; i < N; i++) {
+      let best = -1, bs = 0;
+      for (let k = 0; k < nc; k++) {
+        const s = d[(4 + k) * N + i];
+        if (s > bs) { bs = s; best = k; }
+      }
+      if (bs < YOLO_CONF) continue;
+      const cx = d[i], cy = d[N + i], bw = d[2 * N + i], bh = d[3 * N + i];
+      const clip = (v, m) => Math.max(0, Math.min(m, v));
+      cands.push({
+        c: best, score: bs,
+        x1: clip((cx - bw / 2 - padX) / r, w), y1: clip((cy - bh / 2 - padY) / r, h),
+        x2: clip((cx + bw / 2 - padX) / r, w), y2: clip((cy + bh / 2 - padY) / r, h)
+      });
+    }
+
+    // 5) 같은 head에 겹친 박스는 점수 높은 것 하나만 남김 (NMS)
+    cands.sort((a, b) => b.score - a.score);
+    const keep = [];
+    for (const b of cands) {
+      if (keep.every(k => iou(k, b) < YOLO_IOU)) keep.push(b);
+      if (keep.length >= 300) break;
+    }
+    return keep;
+  }
+
+  /** 클래스별 head 개수 → { galban: 5, normal: 9 } */
+  function countYolo(boxes) {
+    const counts = {};
+    YOLO_CLASSES.forEach(c => { counts[c.key] = 0; });
+    boxes.forEach(b => {
+      const key = (YOLO_CLASSES[b.c] || {}).key;
+      if (key) counts[key]++;
+    });
+    return counts;
+  }
+
+  /** 사진 위에 박스를 그린 이미지 (기록·PDF용으로 크기를 줄임) */
+  function drawDetections(img, boxes, maxSize) {
+    const s = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+    const W = Math.round(img.naturalWidth * s), H = Math.round(img.naturalHeight * s);
+    const cv = document.createElement("canvas");
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext("2d");
+    ctx.drawImage(img, 0, 0, W, H);
+    const lw = Math.max(2, Math.round(Math.max(W, H) / 220));
+    // 정상 박스를 먼저, 병해 박스를 나중에 그려 병해가 위에 보이게 함
+    [...boxes].sort((a, b) => (a.c === YOLO_DISEASE_CLASS) - (b.c === YOLO_DISEASE_CLASS)).forEach(b => {
+      const cl = YOLO_CLASSES[b.c] || { color: "#facc15" };
+      ctx.strokeStyle = cl.color;
+      ctx.lineWidth = (b.c === YOLO_DISEASE_CLASS) ? lw + 1 : lw;
+      ctx.strokeRect(b.x1 * s, b.y1 * s, (b.x2 - b.x1) * s, (b.y2 - b.y1) * s);
+    });
+    return cv.toDataURL("image/jpeg", 0.8);
+  }
+
+  /** head 탐지 요약 화면 */
+  function yoloSummaryHTML(y) {
+    const dis = y[YOLO_CLASSES[YOLO_DISEASE_CLASS].key] || 0;
+    const total = Object.values(y).reduce((a, b) => a + b, 0);
+    if (total === 0) {
+      return `<div class="ys-note">🔍 버섯 head를 찾지 못했습니다.
+              버섯이 화면 가운데에 크게 나오도록 다시 찍어 보세요.</div>`;
+    }
+    const chips = YOLO_CLASSES.map(c => `
+      <div class="ys-chip" style="${c.key === YOLO_CLASSES[YOLO_DISEASE_CLASS].key && y[c.key] ? "border-color:rgba(239,68,68,0.5)" : ""}">
+        <b style="color:${c.color}">${y[c.key] || 0}</b><span>${c.short} head</span></div>`).join("");
+    return `<div class="ys-row">${chips}
+              <div class="ys-chip"><b>${Math.round(dis / total * 100)}%</b><span>병든 head 비율</span></div>
+            </div>
+            <div class="ys-note">사진 속 <span style="color:#ef4444">빨간 박스 = 갈반병 head</span>,
+              <span style="color:#22c55e">초록 박스 = 정상 head</span></div>`;
+  }
 
   // ════════════════════════════════════════════════════
   // ① 드래그&드롭 이벤트 핸들러
@@ -1736,6 +1927,21 @@
     });
   }
 
+  /** 사진 파일 → { thumb: 목록용 작은 사진, full: 분석용 사진 } */
+  function fileToImages(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload  = () => resolve({ thumb: makeThumbnail(img, 480), full: makeThumbnail(img, 1280) });
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
   /** 글자 형태의 이미지를 <img>로 불러옵니다 (AI 분석용) */
   function loadImage(src) {
     return new Promise((resolve, reject) => {
@@ -1768,7 +1974,8 @@
 
     for (const f of files.slice(0, room)) {
       try {
-        pending.push({ name: f.name, image: await fileToThumbnail(f, 480) });
+        const im = await fileToImages(f);
+        pending.push({ name: f.name, image: im.thumb, full: im.full });
       } catch (err) {
         console.error("사진을 읽지 못했습니다:", f.name, err);
       }
@@ -1822,9 +2029,16 @@
   // ════════════════════════════════════════════════════
 
   async function runAnalysis() {
-    if (!isModelLoaded) {
-      alert("AI 모델을 로드 중입니다. 잠시 후 다시 시도해 주세요.");
-      return;
+    if (!isModelLoaded && !yoloSession) {
+      // YOLO를 아직 불러오는 중일 수 있으니 기다려 봄
+      document.getElementById("loadingText").textContent = "AI 모델을 불러오는 중입니다";
+      showLoading(true);
+      await yoloReady;
+      showLoading(false);
+      if (!isModelLoaded && !yoloSession) {
+        alert("AI 모델을 불러오지 못했습니다. 인터넷 연결을 확인하고 새로고침해 주세요.");
+        return;
+      }
     }
     if (pending.length === 0) {
       alert("먼저 사진을 올려 주세요.");
@@ -1844,15 +2058,31 @@
         document.getElementById("loadingText").textContent =
           items.length > 1 ? `AI가 분석 중입니다 (${i + 1}/${items.length})` : "AI가 분석 중입니다";
 
-        const img = await loadImage(items[i].image);
-        const predictions = await model.predict(img);   // ★ AI 분석
+        await yoloReady;   // YOLO 불러오기가 끝날 때까지 대기
+        const img = await loadImage(items[i].full || items[i].image);
+
+        // ★ 보조 모델: 사진 전체 판정 (푸른곰팡이병 등)
+        let predictions = [];
+        if (isModelLoaded) {
+          predictions = (await model.predict(img))
+            .map(p => ({ className: p.className, probability: p.probability }));
+        }
+
+        // ★ YOLO: head 탐지 → 개수 세기 + 박스 그린 사진
+        let yolo = null, image = items[i].image;
+        if (yoloSession) {
+          const boxes = await runYolo(img);
+          yolo  = countYolo(boxes);
+          image = drawDetections(img, boxes, 640);
+        }
 
         records.push({
           id: batchId + i,                    // 고유번호
           batchId,                            // 같이 분석한 묶음 번호
           date: new Date().toISOString(),     // 진단 일시
-          image: items[i].image,              // 사진 (줄인 버전)
-          predictions: predictions.map(p => ({ className: p.className, probability: p.probability }))
+          image,                              // 사진 (박스가 그려진 버전)
+          predictions,                        // 보조 모델 결과
+          yolo                                // head 개수 { galban, normal }
         });
       }
     } catch (err) {
@@ -1883,11 +2113,42 @@
   // 📊 여러 장 결과 요약 화면
   // ════════════════════════════════════════════════════
 
-  /** 사진 한 장의 최고 확률 판정 정보 */
+  /**
+   * 사진 한 장의 최종 판정
+   *   1) YOLO가 갈반병 head를 1개 이상 찾음 → 세균성갈반병 (결과: head 개수, 막대: 병든 head 비율)
+   *   2) 아니면 보조 모델이 다른 병해(푸른곰팡이병 등)로 판정 → 그 병해
+   *   3) 그 밖 → 정상
+   * 돌려주는 값: { name, data, pct(막대 길이 0~100), label(화면 표시 글자) }
+   */
   function topOf(record) {
-    const top  = sortPreds(record.predictions)[0];
-    const data = findInDB(top.className) || { icon: "🍄", color: "#4ade80", isDisease: false };
-    return { name: top.className, pct: Math.round(top.probability * 100), data };
+    const def   = { icon: "🍄", color: "#4ade80", isDisease: false };
+    const preds = record.predictions || [];
+    const tm    = preds.length ? sortPreds(preds)[0] : null;
+    const tmData = tm ? findInDB(tm.className) : null;
+    const y = record.yolo;
+    const dKey = YOLO_CLASSES[YOLO_DISEASE_CLASS].key;
+    const dName = YOLO_CLASSES[YOLO_DISEASE_CLASS].name;
+
+    if (y) {
+      const dis = y[dKey] || 0;
+      const total = Object.values(y).reduce((a, b) => a + b, 0);
+      if (dis > 0) {
+        return { name: dName, data: findInDB(dName) || def,
+                 pct: Math.round(dis / total * 100), label: `${YOLO_CLASSES[YOLO_DISEASE_CLASS].short} head ${dis}개` };
+      }
+      if (tm && tmData && tmData.isDisease && tmData !== findInDB(dName)) {
+        const p = Math.round(tm.probability * 100);
+        return { name: tm.className, data: tmData, pct: p, label: p + "%" };
+      }
+      const normal = findInDB("정상") || def;
+      return { name: "정상", data: normal, pct: total ? 100 : 0,
+               label: total ? `병든 head 0개` : "head 미검출" };
+    }
+
+    // YOLO 결과가 없는 예전 기록 → 보조 모델 결과 그대로
+    if (!tm) return { name: "-", data: def, pct: 0, label: "-" };
+    const p = Math.round(tm.probability * 100);
+    return { name: tm.className, data: tmData || def, pct: p, label: p + "%" };
   }
 
   /** 판정별 사진 수 세기 → { "정상": 7, "세균성갈반병": 3 } */
@@ -1931,7 +2192,7 @@
             <div class="batch-name">${t.data.icon} ${escapeHTML(t.name)}</div>
             <div class="batch-bar"><div style="width:${t.pct}%;background:${t.data.color}"></div></div>
           </div>
-          <div class="batch-pct" style="color:${t.data.color}">${t.pct}%</div>
+          <div class="batch-pct" style="color:${t.data.color};font-size:13px;text-align:right">${t.label}</div>
           <span class="batch-arrow">›</span>
         </div>`;
     }).join("");
@@ -1974,30 +2235,34 @@
       banner.style.display = "none";
     }
 
-    displayResults(record.predictions);
+    displayResults(record);
   }
 
   // ════════════════════════════════════════════════════
   // 📊 결과 화면 표시
   // ════════════════════════════════════════════════════
 
-  function displayResults(predictions) {
+  function displayResults(record) {
+    const t      = topOf(record);
+    const sorted = sortPreds(record.predictions || []);
 
-    // 확률 내림차순 정렬
-    const sorted = [...predictions].sort((a, b) => b.probability - a.probability);
-    const top    = sorted[0];
-    const topPct = Math.round(top.probability * 100);
+    // ── 최종 판정 강조 박스 ──
+    document.getElementById("topResultIcon").textContent = t.data.icon;
+    document.getElementById("topResultName").textContent = t.name;
+    document.getElementById("topResultConf").textContent = t.label;
+    document.getElementById("topResultConf").style.color  = t.data.color;
 
-    // findInDB: 정규화 후 DB에서 찾기 (직접 키 접근 대신 사용)
-    const topData = findInDB(top.className) || { icon:"🍄", color:"#4ade80" };
+    // ── YOLO head 개수 ──
+    const ys = document.getElementById("yoloSummary");
+    if (record.yolo) {
+      ys.innerHTML = yoloSummaryHTML(record.yolo);
+      ys.style.display = "block";
+    } else {
+      ys.style.display = "none";
+    }
 
-    // ── 1등 결과 강조 박스 ──
-    document.getElementById("topResultIcon").textContent = topData.icon;
-    document.getElementById("topResultName").textContent = top.className;
-    document.getElementById("topResultConf").textContent = topPct + "%";
-    document.getElementById("topResultConf").style.color  = topData.color;
-
-    // ── 게이지 바 생성 ──
+    // ── 보조 모델 게이지 바 ──
+    document.getElementById("tmTitle").style.display = sorted.length ? "block" : "none";
     const barsContainer = document.getElementById("resultBars");
     barsContainer.innerHTML = "";
 
@@ -2013,7 +2278,7 @@
           <div class="result-header">
             <span class="result-name">
               <span class="result-dot" style="background:${style.color}"></span>
-              ${style.icon} ${pred.className}
+              ${style.icon} ${escapeHTML(pred.className)}
             </span>
             <span class="result-pct"
                   style="color:${index === 0 ? style.color : '#64748b'}">
@@ -2038,12 +2303,12 @@
       }, 100 + index * 80);
     });
 
-    // ── ② 병해 정보 카드 생성 ──
-    renderDiseaseInfo(top.className, topPct);
+    // ── 병해 정보 카드 ──
+    renderDiseaseInfo(t.name, t.label);
 
-    // ── 🛠 디버그 패널: 모델이 반환한 실제 클래스 이름 표시 ──
-    // 병해 카드가 여전히 안 나온다면 아래 박스의 이름을 DISEASE_DB 키와 비교하세요
-    renderDebugPanel(sorted);
+    // ── 디버그 패널 (보조 모델 클래스 이름 확인용) ──
+    if (sorted.length) renderDebugPanel(sorted);
+    else document.getElementById("debugPanel").style.display = "none";
 
     // 결과 영역 표시
     document.getElementById("resultSection").style.display = "block";
@@ -2115,7 +2380,7 @@
    * @param {string} className - AI가 예측한 클래스 이름
    * @param {number} pct       - 신뢰도 퍼센트
    */
-  function renderDiseaseInfo(className, pct) {
+  function renderDiseaseInfo(className, label) {
     const container = document.getElementById("diseaseInfoSection");
     // DISEASE_DB 직접 접근 대신 정규화 매칭 함수 사용
     const data = findInDB(className);
@@ -2135,7 +2400,7 @@
           <p>
             AI 분석 결과 병해 징후가 감지되지 않았습니다.<br>
             현재 재배 환경을 유지하며 계속 관리해 주세요.<br>
-            <strong style="color:var(--accent-green)">신뢰도: ${pct}%</strong>
+            <strong style="color:var(--accent-green)">${label}</strong>
           </p>
         </div>
       `;
@@ -2377,16 +2642,15 @@
     }
 
     box.innerHTML = list.map(r => {
-      const top  = sortPreds(r.predictions)[0];
-      const data = findInDB(top.className) || { icon: "🍄", color: "#4ade80" };
+      const t = topOf(r);
       return `
         <div class="history-item" onclick="viewHistory(${r.id})">
           <img class="history-thumb" src="${r.image}" alt="진단 사진">
           <div class="history-info">
-            <div class="history-name">${data.icon} ${escapeHTML(top.className)}</div>
+            <div class="history-name">${t.data.icon} ${escapeHTML(t.name)}</div>
             <div class="history-date">${formatDate(r.date)}</div>
           </div>
-          <div class="history-pct" style="color:${data.color}">${Math.round(top.probability * 100)}%</div>
+          <div class="history-pct" style="color:${t.data.color};font-size:13px;text-align:right">${t.label}</div>
           <button class="history-del" onclick="deleteHistory(event, ${r.id})" title="삭제">🗑️</button>
         </div>`;
     }).join("");
@@ -2426,12 +2690,9 @@
 
   /** PDF에 들어갈 결과서 내용을 만듭니다 */
   function buildReportHTML(r) {
-    const sorted = sortPreds(r.predictions);
-    const top    = sorted[0];
-    const topPct = Math.round(top.probability * 100);
-    const data   = findInDB(top.className);
-    const icon   = data ? data.icon  : "🍄";
-    const color  = data ? data.color : "#16a34a";
+    const t      = topOf(r);
+    const sorted = sortPreds(r.predictions || []);
+    const data   = t.data;
 
     // 위험도 배지
     const sevMap = {
@@ -2439,24 +2700,43 @@
       medium: { text: "주의 – 빠른 조치 권장", bg: "#fef3c7", fg: "#b45309" },
       low:    { text: "정상",                 bg: "#dcfce7", fg: "#15803d" }
     };
-    const sev = data ? (sevMap[data.severity] || sevMap.medium) : null;
+    const sev = data.severity ? (sevMap[data.severity] || sevMap.medium) : null;
     const badge = sev
       ? `<span class="rp-badge" style="background:${sev.bg};color:${sev.fg}">${sev.text}</span>` : "";
 
-    // 확률표
-    const rows = sorted.map((p, i) => {
-      const pct = Math.round(p.probability * 100);
-      const c   = (findInDB(p.className) || {}).color || "#94a3b8";
-      return `<tr>
-        <td style="width:30%">${escapeHTML(p.className)}</td>
-        <td><div class="rp-bar"><div style="width:${pct}%;background:${i === 0 ? c : "#cbd5e1"}"></div></div></td>
-        <td style="width:60px;text-align:right;font-weight:700">${pct}%</td>
-      </tr>`;
-    }).join("");
+    // YOLO head 탐지 결과
+    let yoloPart = "";
+    if (r.yolo) {
+      const y = r.yolo;
+      const dis = y[YOLO_CLASSES[YOLO_DISEASE_CLASS].key] || 0;
+      const total = Object.values(y).reduce((a, b) => a + b, 0);
+      yoloPart = `
+        <div class="rp-sec-title">head 탐지 결과 (YOLO)</div>
+        <div class="rp-sum">
+          ${YOLO_CLASSES.map(c => `<div><b style="color:${c.color}">${y[c.key] || 0}</b><span>${c.short} head</span></div>`).join("")}
+          <div><b><u>${total ? Math.round(dis / total * 100) : 0}%</u></b><span>병든 head 비율</span></div>
+        </div>
+        <div class="rp-text" style="font-size:12px;color:#6b7280">사진의 빨간 박스는 갈반병 head, 초록 박스는 정상 head입니다.</div>`;
+    }
+
+    // 보조 모델 확률표
+    let tmPart = "";
+    if (sorted.length) {
+      const rows = sorted.map((p, i) => {
+        const pct = Math.round(p.probability * 100);
+        const c   = (findInDB(p.className) || {}).color || "#94a3b8";
+        return `<tr>
+          <td style="width:30%">${escapeHTML(p.className)}</td>
+          <td><div class="rp-bar"><div style="width:${pct}%;background:${i === 0 ? c : "#cbd5e1"}"></div></div></td>
+          <td style="width:60px;text-align:right;font-weight:700">${pct}%</td>
+        </tr>`;
+      }).join("");
+      tmPart = `<div class="rp-sec-title">사진 전체 판정 (보조 모델)</div><table>${rows}</table>`;
+    }
 
     // 병해 정보
     let info = "";
-    if (data && data.isDisease) {
+    if (data && data.isDisease && data.actions) {
       const acts = data.actions.map(a =>
         a.type === "urgent" ? `<li><u><b>[즉시]</b> ${a.text}</u></li>`
         : a.type === "prevent" ? `<li><b>[예방]</b> ${a.text}</li>`
@@ -2465,7 +2745,7 @@
         <div class="rp-sec-title">발생 원인</div><div class="rp-text">${data.cause}</div>
         <div class="rp-sec-title">주요 증상</div><div class="rp-text">${data.symptoms}</div>
         <div class="rp-sec-title">처리 방법</div><ol>${acts}</ol>`;
-    } else if (data && !data.isDisease) {
+    } else {
       info = `<div class="rp-sec-title">판정 의견</div>
         <div class="rp-text">병해 징후가 감지되지 않았습니다. 현재 재배 환경을 유지하며 계속 관찰해 주세요.</div>`;
     }
@@ -2479,13 +2759,13 @@
         <img class="rp-img" src="${r.image}">
         <div>
           <div class="rp-label">최종 진단</div>
-          <div class="rp-name"><u>${icon} ${escapeHTML(top.className)}</u></div>
-          <div class="rp-pct" style="color:${color}">${topPct}%</div>
+          <div class="rp-name"><u>${data.icon} ${escapeHTML(t.name)}</u></div>
+          <div class="rp-pct" style="color:${data.color};font-size:30px">${t.label}</div>
           ${badge}
         </div>
       </div>
-      <div class="rp-sec-title">클래스별 분석 확률</div>
-      <table>${rows}</table>
+      ${yoloPart}
+      ${tmPart}
       ${info}
       <div class="rp-notice">
         ⚠️ 본 결과는 AI 보조 진단으로 <u><b>참고용</b></u>입니다. 정확한 진단은 전문가에게 문의하시기 바랍니다.
@@ -2595,15 +2875,17 @@
       low:    { text: "정상", bg: "#dcfce7", fg: "#15803d" }
     };
     const head = `<tr><th style="width:40px">No.</th><th style="width:84px">사진</th>
-                  <th>판정</th><th style="width:60px">확률</th><th style="width:70px">위험도</th><th>2순위</th></tr>`;
+                  <th>판정</th><th style="width:110px">결과</th><th style="width:60px">위험도</th><th>근거</th></tr>`;
     const row = (r, i) => {
-      const s   = sortPreds(r.predictions);
+      const s   = sortPreds(r.predictions || []);
       const t   = topOf(r);
       const sev = sevMap[t.data.severity] || sevMap.low;
-      const second = s[1] ? `${escapeHTML(s[1].className)} ${Math.round(s[1].probability * 100)}%` : "-";
+      const second = r.yolo
+        ? YOLO_CLASSES.map(c => `${c.short} ${r.yolo[c.key] || 0}`).join(" / ")
+        : (s[1] ? `2순위 ${escapeHTML(s[1].className)} ${Math.round(s[1].probability * 100)}%` : "-");
       const name = t.data.isDisease ? `<u><b>${escapeHTML(t.name)}</b></u>` : escapeHTML(t.name);
       return `<tr><td>${i + 1}</td><td><img src="${r.image}"></td><td>${t.data.icon} ${name}</td>
-              <td style="font-weight:700;color:${t.data.color}">${t.pct}%</td>
+              <td style="font-weight:700;color:${t.data.color}">${t.label}</td>
               <td><span class="rp-badge" style="background:${sev.bg};color:${sev.fg};font-size:11px">${sev.text}</span></td>
               <td style="color:#6b7280">${second}</td></tr>`;
     };
@@ -2837,9 +3119,17 @@
     lines.push("앱이 진단하는 항목: " + Object.keys(DISEASE_DB).join(", "));
 
     if (currentRecord) {
-      const s = sortPreds(currentRecord.predictions);
-      lines.push("사용자의 최근 진단 결과: " +
-        s.map(p => `${p.className} ${Math.round(p.probability * 100)}%`).join(", "));
+      const t = topOf(currentRecord);
+      lines.push(`사용자의 최근 진단 최종 판정: ${t.name} (${t.label})`);
+      if (currentRecord.yolo) {
+        lines.push("head 탐지(YOLO) 결과: " +
+          YOLO_CLASSES.map(c => `${c.short} head ${currentRecord.yolo[c.key] || 0}개`).join(", "));
+      }
+      const s = sortPreds(currentRecord.predictions || []);
+      if (s.length) {
+        lines.push("사진 전체 판정(보조 모델): " +
+          s.map(p => `${p.className} ${Math.round(p.probability * 100)}%`).join(", "));
+      }
     } else if (batchRecords.length > 1) {
       const counts = countByClass(batchRecords);
       lines.push(`사용자가 사진 ${batchRecords.length}장을 한 번에 진단함. 판정별 장수: ` +
@@ -2853,7 +3143,7 @@
     const k = findDiseaseInText(q.replace(/\s+/g, "").toLowerCase());
     if (k) keys.add(k);
     if (currentRecord) {
-      const d = findInDB(sortPreds(currentRecord.predictions)[0].className);
+      const d = topOf(currentRecord).data;
       const key = Object.keys(DISEASE_DB).find(name => DISEASE_DB[name] === d);
       if (key) keys.add(key);
     }
@@ -2958,23 +3248,33 @@
     if (!currentRecord) {
       return "아직 진단 결과가 없어요. 사진을 올리고 <b>AI 병해 분석 시작</b>을 누른 뒤 다시 물어봐 주세요.";
     }
-    const sorted = sortPreds(currentRecord.predictions);
-    const top = sorted[0], second = sorted[1];
-    const pct = Math.round(top.probability * 100);
-    const data = findInDB(top.className);
+    const t = topOf(currentRecord);
+    const data = t.data;
+    let msg = "";
 
-    let msg = `이번 진단은 <b>${escapeHTML(top.className)} ${pct}%</b>입니다.<br>`;
-    if (pct >= 80) {
-      msg += "AI가 비교적 확신하는 결과예요.";
-    } else if (pct >= 50) {
-      msg += "확신도가 중간 정도예요. 다른 각도·밝은 곳에서 한 번 더 찍어 비교해 보세요.";
+    if (currentRecord.yolo) {
+      // YOLO head 탐지 결과 설명
+      const y = currentRecord.yolo;
+      const dis = y[YOLO_CLASSES[YOLO_DISEASE_CLASS].key] || 0;
+      const total = Object.values(y).reduce((a, b) => a + b, 0);
+      msg = `이번 진단은 <b>${escapeHTML(t.name)}</b>입니다.<br>` +
+            `사진에서 head <b>${total}개</b>를 찾았고, 그중 갈반병 head가 <b>${dis}개</b>` +
+            (total ? ` (병든 비율 ${Math.round(dis / total * 100)}%)` : "") + "예요.<br>" +
+            "사진의 빨간 박스가 갈반병 head, 초록 박스가 정상 head입니다.";
+      if (total === 0) msg += "<br>head를 찾지 못했어요. 버섯이 크게 나오도록 다시 찍어 보세요.";
     } else {
-      msg += "확신도가 낮아요. 사진을 다시 찍어 분석해 보시길 권합니다.";
+      const sorted = sortPreds(currentRecord.predictions || []);
+      const top = sorted[0], second = sorted[1];
+      const pct = top ? Math.round(top.probability * 100) : 0;
+      msg = `이번 진단은 <b>${escapeHTML(t.name)} ${pct}%</b>입니다.<br>`;
+      if (pct >= 80) msg += "AI가 비교적 확신하는 결과예요.";
+      else if (pct >= 50) msg += "확신도가 중간 정도예요. 다른 각도·밝은 곳에서 한 번 더 찍어 비교해 보세요.";
+      else msg += "확신도가 낮아요. 사진을 다시 찍어 분석해 보시길 권합니다.";
+      if (second && pct < 80) {
+        msg += `<br>2순위: ${escapeHTML(second.className)} ${Math.round(second.probability * 100)}%`;
+      }
     }
-    if (second && pct < 80) {
-      msg += `<br>2순위: ${escapeHTML(second.className)} ${Math.round(second.probability * 100)}%`;
-    }
-    if (data && data.isDisease) {
+    if (data && data.isDisease && data.actions) {
       const urgent = data.actions.filter(a => a.type === "urgent");
       msg += `<br><br><b>지금 바로 할 일</b>${actionList(urgent)}` +
              "원인·증상·예방법이 궁금하면 이어서 물어보세요.";

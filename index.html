@@ -15,6 +15,13 @@
   <!-- AI 모델 실행에 필요한 외부 라이브러리 -->
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+  <!-- QR코드 생성 라이브러리 (1.4.4 버전: 브라우저용 파일이 들어있는 버전) -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode@1.4.4/build/qrcode.min.js"></script>
+  <!-- PDF 결과서용 한글 웹 글꼴 (어느 기기에서나 똑같은 모양으로 나오게) -->
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap">
+  <!-- PDF 만들기 라이브러리: 화면을 그림으로 찍는 html2canvas + 그림을 PDF로 만드는 jsPDF -->
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 
   <style>
     /* ════════════════════════════════════════════
@@ -55,7 +62,7 @@
     .app-wrapper {
       width: 100%;
       max-width: 480px;
-      padding: 0 16px 60px;
+      padding: 0 16px 110px;   /* 아래 챗봇 버튼에 가리지 않도록 여백 */
     }
 
     /* ── 상단 헤더 ────────────────────────────── */
@@ -619,8 +626,394 @@
       background: rgba(255,255,255,0.03);
     }
 
+    /* ── QR코드 카드 ────────────────────────────── */
+    .qr-card {
+      text-align: center;
+    }
+    .qr-card .card-title {
+      justify-content: center;
+      margin-bottom: 6px;
+    }
+    .qr-subtitle {
+      font-size: 12px;
+      color: var(--text-sub);
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+    .qr-wrap {
+      display: inline-block;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 14px;
+      box-shadow: 0 0 30px rgba(74,222,128,0.15);
+      margin-bottom: 16px;
+    }
+    .qr-wrap canvas { display: block; border-radius: 6px; }
+    .qr-url {
+      font-size: 11px;
+      color: var(--text-sub);
+      word-break: break-all;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      line-height: 1.6;
+    }
+    .btn-qr-save {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 20px;
+      background: rgba(74,222,128,0.1);
+      border: 1px solid rgba(74,222,128,0.3);
+      color: var(--accent-green);
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .btn-qr-save:hover {
+      background: rgba(74,222,128,0.18);
+      border-color: rgba(74,222,128,0.6);
+    }
+
+    /* 즉시 처리 항목은 밑줄로 강조 */
+    .action-item.urgent .action-text {
+      text-decoration: underline;
+      text-underline-offset: 3px;
+    }
+
+    /* ════════════════════════════════════════════
+       🗂 탭 메뉴 (진단하기 / 진단 기록)
+       ════════════════════════════════════════════ */
+    .tab-bar {
+      display: grid;
+      grid-template-columns: 1fr 1fr;   /* 버튼 두 개를 같은 너비로 */
+      gap: 6px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 5px;
+      margin-bottom: 16px;
+      position: sticky;                 /* 스크롤해도 화면 위에 붙어 있음 */
+      top: 8px;
+      z-index: 20;
+      box-shadow: 0 4px 16px var(--shadow);
+    }
+    .tab-btn {
+      padding: 11px 6px;
+      border: none;
+      border-radius: 10px;
+      background: transparent;
+      color: var(--text-sub);
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    /* 선택된 탭 */
+    .tab-btn.active {
+      background: rgba(74,222,128,0.12);
+      color: var(--accent-green);
+    }
+    /* 기록 개수 숫자 배지 */
+    .tab-count {
+      background: var(--accent-green);
+      color: #0a1628;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 1px 7px;
+      border-radius: 10px;
+    }
+
+    /* ════════════════════════════════════════════
+       📋 진단 기록(히스토리)
+       ════════════════════════════════════════════ */
+    .history-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .history-sub { font-size: 12px; color: var(--text-sub); }
+    .btn-clear {
+      background: transparent;
+      border: 1px solid rgba(248,113,113,0.3);
+      color: #f87171;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    /* 기록 한 줄 */
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.02);
+      transition: border-color 0.2s;
+    }
+    .history-item:hover { border-color: var(--accent-green); }
+    .history-thumb {
+      width: 56px; height: 56px;
+      border-radius: 8px;
+      object-fit: cover;          /* 사진을 정사각형에 꽉 차게 */
+      flex-shrink: 0;
+      background: #000;
+    }
+    .history-info { flex: 1; min-width: 0; }
+    .history-name { font-size: 14px; font-weight: 700; margin-bottom: 3px; }
+    .history-date { font-size: 11px; color: var(--text-sub); }
+    .history-pct  { font-size: 16px; font-weight: 900; }
+    .history-del {
+      background: transparent;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      padding: 6px;
+      opacity: 0.6;
+    }
+    .history-del:hover { opacity: 1; }
+    .history-empty {
+      text-align: center;
+      padding: 40px 10px;
+      color: var(--text-sub);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+    .history-empty .big { font-size: 42px; display: block; margin-bottom: 10px; }
+
+    /* 기록을 다시 볼 때 결과 위에 뜨는 안내띠 */
+    .viewing-banner {
+      display: none;
+      background: rgba(96,165,250,0.1);
+      border: 1px solid rgba(96,165,250,0.3);
+      color: var(--accent-blue);
+      font-size: 12px;
+      font-weight: 600;
+      padding: 10px 14px;
+      border-radius: 10px;
+      margin-bottom: 12px;
+    }
+
+    /* ════════════════════════════════════════════
+       📄 PDF 저장 버튼 + PDF용 결과서 양식
+       ════════════════════════════════════════════ */
+    .btn-pdf {
+      width: 100%;
+      padding: 15px;
+      background: linear-gradient(135deg,#1e3050,#22405a);
+      color: var(--accent-blue);
+      border: 1px solid rgba(96,165,250,0.35);
+      border-radius: 12px;
+      font-size: 15px;
+      font-weight: 800;
+      cursor: pointer;
+      margin-bottom: 16px;
+      font-family: inherit;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .btn-pdf:disabled { opacity: 0.6; cursor: wait; }
+
+    /* PDF로 찍을 결과서 – 화면 밖(왼쪽 멀리)에 숨겨두고 그림으로 찍습니다 */
+    #pdfReport {
+      position: fixed;
+      left: -10000px;
+      top: 0;
+      width: 760px;
+      background: #ffffff;
+      color: #1f2937;
+      padding: 40px;
+      /* 웹 글꼴을 맨 앞에 지정 – 기기마다 글꼴이 달라 한글 간격이 깨지는 것을 방지 */
+      font-family: 'Noto Sans KR', sans-serif;
+    }
+    #pdfReport .rp-head {
+      border-bottom: 3px solid #16a34a;
+      padding-bottom: 12px;
+      margin-bottom: 22px;
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+    }
+    #pdfReport .rp-title { font-size: 26px; font-weight: 800; }
+    #pdfReport .rp-meta  { font-size: 13px; color: #6b7280; }
+    #pdfReport .rp-top   { display: flex; gap: 24px; margin-bottom: 24px; align-items: center; }
+    #pdfReport .rp-img {
+      width: 260px; max-height: 300px;
+      object-fit: contain;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      background: #f9fafb;
+    }
+    #pdfReport .rp-label { font-size: 13px; color: #6b7280; margin-bottom: 6px; }
+    #pdfReport .rp-name  { font-size: 26px; font-weight: 800; margin-bottom: 6px; }
+    #pdfReport .rp-pct   { font-size: 40px; font-weight: 900; line-height: 1.1; margin-bottom: 10px; }
+    #pdfReport .rp-badge {
+      display: inline-block;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 20px;
+    }
+    #pdfReport .rp-sec-title {
+      font-size: 16px;
+      font-weight: 800;
+      margin: 20px 0 10px;
+      padding-left: 10px;
+      border-left: 4px solid #16a34a;
+    }
+    #pdfReport table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    #pdfReport td { padding: 8px 6px; border-bottom: 1px solid #f1f5f9; }
+    #pdfReport .rp-bar { height: 10px; background: #f1f5f9; border-radius: 99px; overflow: hidden; }
+    #pdfReport .rp-bar div { height: 100%; border-radius: 99px; }
+    #pdfReport .rp-text { font-size: 14px; line-height: 1.8; color: #374151; }
+    #pdfReport ol { padding-left: 22px; font-size: 14px; line-height: 1.9; color: #374151; }
+    #pdfReport .rp-notice {
+      margin-top: 24px;
+      background: #fffbeb;
+      border: 1px solid #fde68a;
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: #92400e;
+    }
+    #pdfReport .rp-foot {
+      margin-top: 18px;
+      font-size: 11px;
+      color: #9ca3af;
+      text-align: center;
+    }
+
+    /* ════════════════════════════════════════════
+       💬 상담 챗봇
+       ════════════════════════════════════════════ */
+    /* 오른쪽 아래 동그란 열기 버튼 */
+    .chat-fab {
+      position: fixed;
+      right: 18px;
+      bottom: calc(18px + env(safe-area-inset-bottom, 0px)); /* 아이폰 하단바 피하기 */
+      width: 58px; height: 58px;
+      border-radius: 50%;
+      border: none;
+      background: linear-gradient(135deg,#16a34a,#22c55e);
+      color: #fff;
+      font-size: 26px;
+      box-shadow: 0 6px 24px rgba(34,197,94,0.45);
+      cursor: pointer;
+      z-index: 50;
+    }
+    /* 챗봇 대화창 */
+    .chat-panel {
+      position: fixed;
+      right: 16px;
+      bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+      width: min(380px, calc(100vw - 32px));   /* 폰에서는 화면 폭에 맞춤 */
+      height: min(560px, 72vh);
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.6);
+      display: none;                            /* 처음엔 닫혀 있음 */
+      flex-direction: column;
+      z-index: 60;
+      overflow: hidden;
+    }
+    .chat-panel.open { display: flex; }
+    .chat-header {
+      padding: 14px 16px;
+      background: linear-gradient(135deg,#14532d,#166534);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .chat-header .title { font-size: 15px; font-weight: 800; color: #fff; }
+    .chat-header .sub   { font-size: 11px; color: #bbf7d0; }
+    .chat-body {
+      flex: 1;
+      overflow-y: auto;          /* 대화가 길어지면 스크롤 */
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .msg {
+      max-width: 88%;
+      padding: 10px 13px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.7;
+      word-break: keep-all;
+    }
+    .msg.bot  { background: #162040; color: var(--text-main); align-self: flex-start; border-bottom-left-radius: 4px; }
+    .msg.user { background: #16a34a; color: #fff; align-self: flex-end; border-bottom-right-radius: 4px; }
+    .msg ul, .msg ol { padding-left: 18px; margin-top: 4px; }
+    .msg b { color: var(--accent-green); }
+    /* 추천 질문 버튼 줄 */
+    .chat-chips {
+      display: flex;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 8px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .chip {
+      white-space: nowrap;
+      background: rgba(74,222,128,0.08);
+      border: 1px solid rgba(74,222,128,0.3);
+      color: var(--accent-green);
+      font-size: 12px;
+      padding: 6px 11px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .chat-input-row {
+      display: flex;
+      gap: 8px;
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+    }
+    .chat-input {
+      flex: 1;
+      background: #0a1628;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 16px;            /* 16px 미만이면 아이폰이 화면을 자동 확대함 */
+      font-family: inherit;
+    }
+    .chat-send {
+      background: #16a34a;
+      border: none;
+      color: #fff;
+      font-weight: 800;
+      border-radius: 10px;
+      padding: 0 16px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
     @media (min-width:480px) {
-      .app-wrapper { padding: 0 0 60px; }
+      .app-wrapper { padding: 0 0 110px; }
     }
   </style>
 </head>
@@ -634,6 +1027,32 @@
     <h1>🍄 버섯 병해<br><span>AI 진단기</span></h1>
     <p>사진 한 장으로 버섯의 병해를<br>즉시 진단해 드립니다</p>
   </header>
+
+  <!-- 탭 메뉴: 진단하기 / 진단 기록 -->
+  <nav class="tab-bar">
+    <button class="tab-btn active" id="tabBtnDiagnose" onclick="switchTab('diagnose')">🔬 진단하기</button>
+    <button class="tab-btn" id="tabBtnHistory" onclick="switchTab('history')">
+      📋 진단 기록 <span class="tab-count" id="historyCount">0</span>
+    </button>
+  </nav>
+
+  <!-- ═════ 진단하기 탭 시작 ═════ -->
+  <div id="tabDiagnose">
+
+
+  <!-- QR코드 카드 – 앱 접속 링크를 QR로 표시 -->
+  <div class="card qr-card">
+    <div class="card-title"><span>📱</span> QR코드로 바로 접속</div>
+    <div class="qr-subtitle">
+      스마트폰 카메라로 아래 QR을 스캔하면<br>앱이 바로 열립니다
+    </div>
+    <!-- QR 이미지가 여기에 그려집니다 (JS로 자동 생성) -->
+    <div class="qr-wrap">
+      <canvas id="qrCanvas"></canvas>
+    </div>
+    <div class="qr-url" id="qrUrlText"></div>
+    <button class="btn-qr-save" onclick="saveQR()">⬇️ QR 이미지 저장</button>
+  </div>
 
   <!-- ② 업로드 카드 -->
   <div class="card">
@@ -698,6 +1117,9 @@
   <!-- ④ 결과 영역 (분석 완료 후 나타남) -->
   <div id="resultSection">
 
+    <!-- 진단 기록에서 다시 열었을 때만 보이는 안내띠 -->
+    <div class="viewing-banner" id="viewingBanner"></div>
+
     <!-- 확률 게이지 바 카드 -->
     <div class="card">
       <div class="card-title"><span>🎯</span> 진단 결과</div>
@@ -737,6 +1159,9 @@
     -->
     <div id="diseaseInfoSection"></div>
 
+    <!-- PDF 저장 버튼 -->
+    <button class="btn-pdf" id="pdfBtn" onclick="exportPDF()">📄 진단 결과서 PDF 저장</button>
+
     <!-- 모델 정보 -->
     <div class="footer-info">
       <div class="info-item">
@@ -754,7 +1179,69 @@
     <button class="btn-retry" onclick="resetAll()">🔄 다시 분석하기</button>
   </div>
 
+  </div>
+  <!-- ═════ 진단하기 탭 끝 ═════ -->
+
+  <!-- ═════ 진단 기록 탭 (처음엔 숨김) ═════ -->
+  <div id="tabHistory" style="display:none;">
+    <div class="card">
+      <div class="history-head">
+        <div>
+          <div class="card-title" style="margin-bottom:4px;"><span>📋</span> 진단 기록</div>
+          <div class="history-sub" id="historySub"></div>
+        </div>
+        <button class="btn-clear" onclick="clearHistory()">전체 삭제</button>
+      </div>
+
+      <!-- 기록 목록 (JS로 채워짐) -->
+      <div id="historyList"></div>
+
+      <div class="notice-box">
+        <span class="notice-icon">ℹ️</span>
+        <span class="notice-text">
+          기록은 <u>지금 사용 중인 기기의 이 브라우저에만</u> 저장됩니다.
+          다른 폰·PC에서는 보이지 않고, 브라우저 데이터를 지우면 함께 삭제됩니다.
+          최근 30건까지 보관됩니다.
+        </span>
+      </div>
+    </div>
+  </div>
+
 </div><!-- .app-wrapper 끝 -->
+
+<!-- PDF로 만들 결과서가 잠깐 그려지는 곳 (화면에는 안 보임) -->
+<div id="pdfReport"></div>
+
+<!-- ═════ 💬 상담 챗봇 ═════ -->
+<!-- 오른쪽 아래 동그란 버튼 -->
+<button class="chat-fab" id="chatFab" onclick="toggleChat()" aria-label="상담 챗봇 열기">💬</button>
+
+<!-- 대화창 -->
+<div class="chat-panel" id="chatPanel">
+  <div class="chat-header">
+    <span style="font-size:24px;">🍄</span>
+    <div>
+      <div class="title">버섯 병해 상담봇</div>
+      <div class="sub">진단 결과·병해 원인·처리 방법 안내</div>
+    </div>
+  </div>
+  <!-- 대화 내용이 쌓이는 곳 -->
+  <div class="chat-body" id="chatBody"></div>
+  <!-- 추천 질문 버튼 -->
+  <div class="chat-chips">
+    <button class="chip" onclick="sendChat('방금 진단 결과 설명해줘')">방금 진단 결과 설명</button>
+    <button class="chip" onclick="sendChat('갈반병 처리 방법')">갈반병 처리 방법</button>
+    <button class="chip" onclick="sendChat('푸른곰팡이병 예방법')">푸른곰팡이병 예방법</button>
+    <button class="chip" onclick="sendChat('사진 잘 찍는 법')">사진 잘 찍는 법</button>
+    <button class="chip" onclick="sendChat('어떤 병을 진단할 수 있어?')">진단 가능한 병</button>
+  </div>
+  <!-- 질문 입력칸 -->
+  <div class="chat-input-row">
+    <input class="chat-input" id="chatInput" placeholder="궁금한 점을 입력하세요"
+           onkeydown="if(event.key==='Enter' && !event.isComposing) sendChat()">
+    <button class="chat-send" onclick="sendChat()">전송</button>
+  </div>
+</div>
 
 
 <!-- ══════════════════════════════════════════════════════
@@ -901,11 +1388,26 @@
   let model = null;
   let isModelLoaded = false;
 
+  // 이 앱의 인터넷 주소 (QR코드, PDF 하단에 사용)
+  const APP_URL = "https://pehssg.github.io/mushroom-diagnosis/";
+
+  // 진단 기록을 브라우저에 저장할 때 쓰는 이름표(key)와 최대 보관 개수
+  const HISTORY_KEY = "mushroomDiagnosisHistory";
+  const HISTORY_MAX = 30;
+
+  // 지금 화면에 보이는 진단 결과 (PDF 저장, 챗봇 설명에 사용)
+  let currentRecord = null;
+
   // ════════════════════════════════════════════════════
   // 🚀 페이지 로드 시 AI 모델 미리 불러오기
   // ════════════════════════════════════════════════════
   window.addEventListener("load", async () => {
+    generateQR();     // QR코드 그리기 (실패해도 AI 모델 로딩에는 영향 없음)
+    renderHistory();  // 저장된 진단 기록 개수 표시
+    initChatbot();    // 챗봇 첫 인사말
+
     try {
+      // Teachable Machine 모델 불러오기
       model = await tmImage.load(
         MODEL_URL + "model.json",
         MODEL_URL + "metadata.json"
@@ -1013,6 +1515,7 @@
 
     // 파일 읽기 완료 시 실행
     reader.onload = (e) => {
+      currentRecord = null;   // 새 사진이므로 이전 결과는 해제
       document.getElementById("previewImg").src = e.target.result;
       document.getElementById("previewWrap").style.display = "block";
       document.getElementById("analyzeBtn").style.display  = "flex";
@@ -1039,8 +1542,23 @@
     try {
       const imgElement = document.getElementById("previewImg");
       const predictions = await model.predict(imgElement); // AI 분석 실행
+
+      // 진단 결과 한 건을 '기록' 형태로 묶습니다
+      const record = {
+        id: Date.now(),                          // 고유번호 (현재 시각)
+        date: new Date().toISOString(),          // 진단 일시
+        image: makeThumbnail(imgElement, 480),   // 사진 (용량을 줄인 버전)
+        predictions: predictions.map(p => ({     // 각 클래스별 확률
+          className: p.className,
+          probability: p.probability
+        }))
+      };
+      currentRecord = record;   // 지금 보고 있는 결과로 지정
+      saveToHistory(record);    // 진단 기록에 저장
+
       showLoading(false);
-      displayResults(predictions);
+      document.getElementById("viewingBanner").style.display = "none";
+      displayResults(record.predictions);
     } catch (err) {
       console.error("분석 오류:", err);
       showLoading(false);
@@ -1301,6 +1819,534 @@
     document.getElementById("loadingWrap").style.display    = show ? "flex"  : "none";
   }
 
+  /**
+   * QR코드를 그립니다.
+   * 오류가 나도 앱의 다른 기능이 멈추지 않도록 try로 감쌉니다.
+   */
+  function generateQR() {
+    try {
+      document.getElementById("qrUrlText").textContent = APP_URL;
+      QRCode.toCanvas(
+        document.getElementById("qrCanvas"),
+        APP_URL,
+        {
+          width: 200,                                   // QR 크기 (픽셀)
+          margin: 1,                                    // QR 바깥 여백
+          color: { dark: "#0a1628", light: "#ffffff" }  // 점 색 / 바탕색
+        },
+        (err) => { if (err) console.error("QR 생성 실패:", err); }
+      );
+    } catch (err) {
+      console.error("QR 생성 실패:", err);
+    }
+  }
+
+  /**
+   * QR 이미지를 PNG 파일로 저장합니다
+   */
+  function saveQR() {
+    const canvas = document.getElementById("qrCanvas");
+    const link = document.createElement("a");
+    link.download = "mushroom-diagnosis-qr.png"; // 저장될 파일명
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  }
+
+
+  // ════════════════════════════════════════════════════
+  // 🧰 공통 도우미 함수
+  // ════════════════════════════════════════════════════
+
+  /** 날짜를 "2026.11.13 14:05" 형태로 바꿉니다 */
+  function formatDate(iso) {
+    const d = new Date(iso);
+    const p = (n) => String(n).padStart(2, "0");   // 한 자리 숫자 앞에 0 붙이기
+    return `${d.getFullYear()}.${p(d.getMonth()+1)}.${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  }
+
+  /** 파일 이름용 날짜 "20261113_1405" */
+  function fileStamp(iso) {
+    return formatDate(iso).replace(/\./g, "").replace(" ", "_").replace(":", "");
+  }
+
+  /** 글자 안의 <, > 같은 특수문자를 안전하게 바꿉니다 */
+  function escapeHTML(s) {
+    return String(s).replace(/[&<>"']/g, c =>
+      ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
+  }
+
+  /** 확률이 높은 순서로 정렬한 새 배열을 돌려줍니다 */
+  function sortPreds(preds) {
+    return [...preds].sort((a, b) => b.probability - a.probability);
+  }
+
+  /**
+   * 사진을 작게 줄여 글자(문자열)로 바꿉니다.
+   * 원본 사진은 너무 커서 브라우저 저장공간이 금방 차기 때문입니다.
+   */
+  function makeThumbnail(img, maxSize) {
+    const scale = Math.min(1, maxSize / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.round(img.naturalWidth * scale);
+    const h = Math.round(img.naturalHeight * scale);
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+    return canvas.toDataURL("image/jpeg", 0.75);   // JPEG 품질 75%
+  }
+
+  // ════════════════════════════════════════════════════
+  // 🗂 탭 전환
+  // ════════════════════════════════════════════════════
+  function switchTab(name) {
+    const isDiag = (name === "diagnose");
+    document.getElementById("tabDiagnose").style.display = isDiag ? "block" : "none";
+    document.getElementById("tabHistory").style.display  = isDiag ? "none"  : "block";
+    document.getElementById("tabBtnDiagnose").classList.toggle("active", isDiag);
+    document.getElementById("tabBtnHistory").classList.toggle("active", !isDiag);
+    if (!isDiag) renderHistory();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  // ════════════════════════════════════════════════════
+  // 📋 ① 진단 기록(히스토리)
+  //   브라우저의 localStorage(작은 저장공간)에 저장합니다
+  // ════════════════════════════════════════════════════
+
+  /** 저장된 기록 목록을 꺼냅니다 */
+  function loadHistory() {
+    try {
+      return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    } catch (e) {
+      return [];   // 저장공간을 쓸 수 없으면 빈 목록
+    }
+  }
+
+  /** 기록 목록을 저장합니다. 공간이 부족하면 오래된 기록부터 지웁니다 */
+  function writeHistory(list) {
+    while (true) {
+      try {
+        localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+        return;
+      } catch (e) {
+        if (list.length === 0) return;   // 더 지울 것이 없으면 포기
+        list.pop();                      // 가장 오래된 기록 1개 삭제 후 재시도
+      }
+    }
+  }
+
+  /** 새 진단 결과를 기록 맨 앞에 추가합니다 */
+  function saveToHistory(record) {
+    const list = loadHistory();
+    list.unshift(record);                       // 맨 앞(최신)에 추가
+    writeHistory(list.slice(0, HISTORY_MAX));   // 최대 개수만 남김
+    renderHistory();
+  }
+
+  /** 기록 목록을 화면에 그립니다 */
+  function renderHistory() {
+    const list = loadHistory();
+    document.getElementById("historyCount").textContent = list.length;
+    document.getElementById("historySub").textContent =
+      list.length ? `총 ${list.length}건 · 최신순` : "";
+
+    const box = document.getElementById("historyList");
+    if (list.length === 0) {
+      box.innerHTML = `
+        <div class="history-empty">
+          <span class="big">🗂️</span>
+          아직 진단 기록이 없습니다.<br>사진을 분석하면 자동으로 저장됩니다.
+        </div>`;
+      return;
+    }
+
+    box.innerHTML = list.map(r => {
+      const top  = sortPreds(r.predictions)[0];
+      const data = findInDB(top.className) || { icon: "🍄", color: "#4ade80" };
+      return `
+        <div class="history-item" onclick="viewHistory(${r.id})">
+          <img class="history-thumb" src="${r.image}" alt="진단 사진">
+          <div class="history-info">
+            <div class="history-name">${data.icon} ${escapeHTML(top.className)}</div>
+            <div class="history-date">${formatDate(r.date)}</div>
+          </div>
+          <div class="history-pct" style="color:${data.color}">${Math.round(top.probability * 100)}%</div>
+          <button class="history-del" onclick="deleteHistory(event, ${r.id})" title="삭제">🗑️</button>
+        </div>`;
+    }).join("");
+  }
+
+  /** 기록 하나를 눌렀을 때 → 진단 화면에서 그 결과를 다시 보여줍니다 */
+  function viewHistory(id) {
+    const record = loadHistory().find(r => r.id === id);
+    if (!record) return;
+
+    switchTab("diagnose");
+    currentRecord = record;
+
+    // 사진과 결과 다시 표시
+    document.getElementById("previewImg").src = record.image;
+    document.getElementById("previewWrap").style.display = "block";
+    document.getElementById("analyzeBtn").style.display  = "none";
+
+    const banner = document.getElementById("viewingBanner");
+    banner.textContent = `📋 저장된 기록을 보고 있습니다 · ${formatDate(record.date)}`;
+    banner.style.display = "block";
+
+    displayResults(record.predictions);
+  }
+
+  /** 기록 하나 삭제 */
+  function deleteHistory(event, id) {
+    event.stopPropagation();   // 줄 전체 클릭(기록 열기)이 같이 실행되지 않도록 막음
+    if (!confirm("이 진단 기록을 삭제할까요?")) return;
+    writeHistory(loadHistory().filter(r => r.id !== id));
+    renderHistory();
+  }
+
+  /** 기록 전체 삭제 */
+  function clearHistory() {
+    if (loadHistory().length === 0) return;
+    if (!confirm("모든 진단 기록을 삭제할까요?\n삭제하면 되돌릴 수 없습니다.")) return;
+    localStorage.removeItem(HISTORY_KEY);
+    renderHistory();
+  }
+
+  // ════════════════════════════════════════════════════
+  // 📄 ② 진단 결과서 PDF 저장
+  //   흰 바탕 결과서를 만들어 → 그림으로 찍고 → PDF에 붙입니다
+  //   (그림으로 붙이기 때문에 한글이 깨지지 않습니다)
+  // ════════════════════════════════════════════════════
+
+  /** PDF에 들어갈 결과서 내용을 만듭니다 */
+  function buildReportHTML(r) {
+    const sorted = sortPreds(r.predictions);
+    const top    = sorted[0];
+    const topPct = Math.round(top.probability * 100);
+    const data   = findInDB(top.className);
+    const icon   = data ? data.icon  : "🍄";
+    const color  = data ? data.color : "#16a34a";
+
+    // 위험도 배지
+    const sevMap = {
+      high:   { text: "위험 – 즉시 처리 필요", bg: "#fee2e2", fg: "#b91c1c" },
+      medium: { text: "주의 – 빠른 조치 권장", bg: "#fef3c7", fg: "#b45309" },
+      low:    { text: "정상",                 bg: "#dcfce7", fg: "#15803d" }
+    };
+    const sev = data ? (sevMap[data.severity] || sevMap.medium) : null;
+    const badge = sev
+      ? `<span class="rp-badge" style="background:${sev.bg};color:${sev.fg}">${sev.text}</span>` : "";
+
+    // 확률표
+    const rows = sorted.map((p, i) => {
+      const pct = Math.round(p.probability * 100);
+      const c   = (findInDB(p.className) || {}).color || "#94a3b8";
+      return `<tr>
+        <td style="width:30%">${escapeHTML(p.className)}</td>
+        <td><div class="rp-bar"><div style="width:${pct}%;background:${i === 0 ? c : "#cbd5e1"}"></div></div></td>
+        <td style="width:60px;text-align:right;font-weight:700">${pct}%</td>
+      </tr>`;
+    }).join("");
+
+    // 병해 정보
+    let info = "";
+    if (data && data.isDisease) {
+      const acts = data.actions.map(a =>
+        a.type === "urgent" ? `<li><u><b>[즉시]</b> ${a.text}</u></li>`
+        : a.type === "prevent" ? `<li><b>[예방]</b> ${a.text}</li>`
+        : `<li>${a.text}</li>`).join("");
+      info = `
+        <div class="rp-sec-title">발생 원인</div><div class="rp-text">${data.cause}</div>
+        <div class="rp-sec-title">주요 증상</div><div class="rp-text">${data.symptoms}</div>
+        <div class="rp-sec-title">처리 방법</div><ol>${acts}</ol>`;
+    } else if (data && !data.isDisease) {
+      info = `<div class="rp-sec-title">판정 의견</div>
+        <div class="rp-text">병해 징후가 감지되지 않았습니다. 현재 재배 환경을 유지하며 계속 관찰해 주세요.</div>`;
+    }
+
+    return `
+      <div class="rp-head">
+        <div class="rp-title">🍄 버섯 병해 AI 진단 결과서</div>
+        <div class="rp-meta">진단 일시: ${formatDate(r.date)}</div>
+      </div>
+      <div class="rp-top">
+        <img class="rp-img" src="${r.image}">
+        <div>
+          <div class="rp-label">최종 진단</div>
+          <div class="rp-name"><u>${icon} ${escapeHTML(top.className)}</u></div>
+          <div class="rp-pct" style="color:${color}">${topPct}%</div>
+          ${badge}
+        </div>
+      </div>
+      <div class="rp-sec-title">클래스별 분석 확률</div>
+      <table>${rows}</table>
+      ${info}
+      <div class="rp-notice">
+        ⚠️ 본 결과는 AI 보조 진단으로 <u><b>참고용</b></u>입니다. 정확한 진단은 전문가에게 문의하시기 바랍니다.
+      </div>
+      <div class="rp-foot">버섯 병해 AI 진단기 · ${APP_URL}</div>`;
+  }
+
+  /** PDF 저장 버튼을 눌렀을 때 실행 */
+  async function exportPDF() {
+    if (!currentRecord) {
+      alert("먼저 사진을 분석해 주세요.");
+      return;
+    }
+    if (typeof html2canvas === "undefined" || !window.jspdf) {
+      alert("PDF 기능을 불러오지 못했습니다.\n인터넷 연결을 확인한 뒤 새로고침해 주세요.");
+      return;
+    }
+
+    const btn    = document.getElementById("pdfBtn");
+    const report = document.getElementById("pdfReport");
+    btn.disabled = true;
+    btn.textContent = "⏳ PDF 만드는 중...";
+
+    try {
+      // 1) 결과서 내용 채우기
+      report.innerHTML = buildReportHTML(currentRecord);
+
+      // 2) 결과서 안의 사진이 다 그려질 때까지 기다리기
+      await Promise.all([...report.querySelectorAll("img")].map(img =>
+        img.complete ? Promise.resolve()
+                     : new Promise(res => { img.onload = img.onerror = res; })));
+
+      // 2-1) 한글 웹 글꼴이 다 준비될 때까지 기다리기 (간격 깨짐 방지)
+      report.offsetHeight;                       // 화면 배치를 먼저 계산시킴
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+      // 3) 결과서를 고화질 그림으로 찍기 (scale 2 = 2배 해상도)
+      const canvas = await html2canvas(report, { scale: 2, backgroundColor: "#ffffff" });
+
+      // 4) A4 PDF에 붙이기
+      const { jsPDF } = window.jspdf;
+      const pdf     = new jsPDF("p", "mm", "a4");   // 세로 방향, mm 단위, A4
+      const margin  = 10;                           // 여백 10mm
+      const imgW    = 210 - margin * 2;             // A4 너비 210mm
+      const pageH   = 297 - margin * 2;             // A4 높이 297mm
+      const pxPerMm = canvas.width / imgW;          // 1mm에 몇 픽셀인지
+      const totalH  = canvas.height / pxPerMm;      // 결과서 전체 높이(mm)
+
+      if (totalH <= pageH * 1.25) {
+        // 한 장에 들어가거나 조금 넘치면 → 살짝 줄여서 한 장에 맞춤
+        const s = Math.min(1, pageH / totalH);
+        const w = imgW * s, hh = totalH * s;
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG",
+                     margin + (imgW - w) / 2, margin, w, hh);
+      } else {
+        // 많이 길면 → 여러 장으로 나눔
+        const pagePx = Math.floor(pageH * pxPerMm); // 한 페이지에 들어갈 픽셀 높이
+        const minPx  = 15 * pxPerMm;                // 15mm 미만 자투리(여백)는 새 페이지로 만들지 않음
+        for (let y = 0, page = 0; y < canvas.height - minPx; y += pagePx, page++) {
+          const sliceH = Math.min(pagePx, canvas.height - y);
+          const piece  = document.createElement("canvas");
+          piece.width  = canvas.width;
+          piece.height = sliceH;
+          const ctx = piece.getContext("2d");
+          ctx.fillStyle = "#ffffff";
+          ctx.fillRect(0, 0, piece.width, piece.height);
+          ctx.drawImage(canvas, 0, y, canvas.width, sliceH, 0, 0, canvas.width, sliceH);
+
+          if (page > 0) pdf.addPage();
+          pdf.addImage(piece.toDataURL("image/jpeg", 0.92), "JPEG",
+                       margin, margin, imgW, sliceH / pxPerMm);
+        }
+      }
+
+      // 5) 파일로 저장
+      pdf.save(`버섯진단결과_${fileStamp(currentRecord.date)}.pdf`);
+
+    } catch (err) {
+      console.error("PDF 생성 오류:", err);
+      alert("PDF를 만드는 중 오류가 발생했습니다: " + err.message);
+    } finally {
+      report.innerHTML = "";
+      btn.disabled = false;
+      btn.textContent = "📄 진단 결과서 PDF 저장";
+    }
+  }
+
+  // ════════════════════════════════════════════════════
+  // 💬 ③ 상담 챗봇 (규칙 기반)
+  //   질문 속 단어를 보고 DISEASE_DB의 내용으로 답합니다.
+  //   인터넷 AI(API)를 쓰지 않으므로 무료이고 비용·키 유출 걱정이 없습니다.
+  // ════════════════════════════════════════════════════
+
+  // 질문에 이런 단어가 있으면 해당 병해로 알아듣습니다 (자유롭게 추가 가능)
+  const DISEASE_ALIASES = {
+    "푸른곰팡이병":   ["푸른곰팡이", "푸른곰팡", "트리코데르마", "곰팡이"],
+    "세균성갈반병":   ["갈반", "갈색무늬", "세균"],
+    "바이러스병":     ["바이러스"],
+    "정상":           ["정상", "건강"]
+  };
+
+  /** 챗봇 창 열기/닫기 */
+  function toggleChat() {
+    const panel = document.getElementById("chatPanel");
+    const open  = panel.classList.toggle("open");
+    document.getElementById("chatFab").textContent = open ? "✕" : "💬";
+    if (open) document.getElementById("chatInput").focus();
+  }
+
+  /** 대화창에 말풍선 하나 추가 */
+  function addMsg(content, who) {
+    const div = document.createElement("div");
+    div.className = "msg " + who;
+    if (who === "user") div.textContent = content;   // 사용자 글은 글자 그대로 표시(안전)
+    else div.innerHTML = content;                    // 챗봇 답은 굵게·목록 서식 사용
+    const body = document.getElementById("chatBody");
+    body.appendChild(div);
+    body.scrollTop = body.scrollHeight;              // 맨 아래로 스크롤
+  }
+
+  /** 첫 인사 */
+  function initChatbot() {
+    addMsg("안녕하세요! 🍄 <b>버섯 병해 상담봇</b>입니다.<br>" +
+           "진단 결과 해석, 병해 원인·증상·처리·예방 방법을 안내해 드려요.<br>" +
+           "아래 버튼을 누르거나 직접 질문해 보세요.", "bot");
+  }
+
+  /** 질문 보내기 (버튼 클릭 시 text가 함께 들어옴) */
+  function sendChat(text) {
+    const input = document.getElementById("chatInput");
+    const q = (text !== undefined ? text : input.value).trim();
+    if (!q) return;
+    input.value = "";
+    if (!document.getElementById("chatPanel").classList.contains("open")) toggleChat();
+    addMsg(q, "user");
+    setTimeout(() => addMsg(botAnswer(q), "bot"), 350);   // 살짝 뒤에 답하기
+  }
+
+  /** 질문에서 병해 이름 찾기 */
+  function findDiseaseInText(t) {
+    for (const key of Object.keys(DISEASE_DB)) {
+      const names = [key.replace(/\s/g, "")].concat(DISEASE_ALIASES[key] || []);
+      if (names.some(n => t.includes(n))) return key;
+    }
+    return null;
+  }
+
+  /** 처리 방법 목록을 HTML로 */
+  function actionList(actions) {
+    return "<ol>" + actions.map(a => `<li>${a.text}</li>`).join("") + "</ol>";
+  }
+
+  /** 방금(또는 기록에서 연) 진단 결과 설명 */
+  function explainCurrent() {
+    if (!currentRecord) {
+      return "아직 진단 결과가 없어요. 사진을 올리고 <b>AI 병해 분석 시작</b>을 누른 뒤 다시 물어봐 주세요.";
+    }
+    const sorted = sortPreds(currentRecord.predictions);
+    const top = sorted[0], second = sorted[1];
+    const pct = Math.round(top.probability * 100);
+    const data = findInDB(top.className);
+
+    let msg = `이번 진단은 <b>${escapeHTML(top.className)} ${pct}%</b>입니다.<br>`;
+    if (pct >= 80) {
+      msg += "AI가 비교적 확신하는 결과예요.";
+    } else if (pct >= 50) {
+      msg += "확신도가 중간 정도예요. 다른 각도·밝은 곳에서 한 번 더 찍어 비교해 보세요.";
+    } else {
+      msg += "확신도가 낮아요. 사진을 다시 찍어 분석해 보시길 권합니다.";
+    }
+    if (second && pct < 80) {
+      msg += `<br>2순위: ${escapeHTML(second.className)} ${Math.round(second.probability * 100)}%`;
+    }
+    if (data && data.isDisease) {
+      const urgent = data.actions.filter(a => a.type === "urgent");
+      msg += `<br><br><b>지금 바로 할 일</b>${actionList(urgent)}` +
+             "원인·증상·예방법이 궁금하면 이어서 물어보세요.";
+    } else if (data && !data.isDisease) {
+      msg += "<br><br>병해 징후는 보이지 않아요. 현재 관리 상태를 유지해 주세요.";
+    }
+    return msg;
+  }
+
+  /** 질문을 보고 답을 고릅니다 */
+  function botAnswer(raw) {
+    const t = raw.replace(/\s+/g, "").toLowerCase();   // 띄어쓰기 무시
+
+    // 인사
+    if (/^(안녕|하이|hi|hello|반가)/.test(t)) {
+      return "안녕하세요! 무엇이 궁금하신가요? 🍄";
+    }
+    // PDF
+    if (/pdf|결과서|출력|인쇄/.test(t)) {
+      return "진단 후 결과 화면 아래 <b>📄 진단 결과서 PDF 저장</b> 버튼을 누르면 사진·확률·처리 방법이 담긴 A4 결과서가 저장됩니다. " +
+             "진단 기록에서 예전 결과를 연 뒤에도 저장할 수 있어요.";
+    }
+    // 기록
+    if (/기록|히스토리|이력|예전|지난/.test(t)) {
+      return "상단 <b>📋 진단 기록</b> 탭에서 최근 30건을 볼 수 있어요. 항목을 누르면 결과를 다시 볼 수 있고, 🗑️로 삭제할 수 있습니다.<br>" +
+             "단, 기록은 <b>지금 쓰는 기기의 브라우저에만</b> 저장됩니다.";
+    }
+
+    const key = findDiseaseInText(t);
+
+    // 진단 결과 설명 (병 이름 없이 '결과'를 물을 때)
+    if (!key && /결과|방금|이번|진단해석|해석/.test(t)) {
+      return explainCurrent();
+    }
+
+    // 병해별 질문
+    if (key) {
+      const d = DISEASE_DB[key];
+      if (!d.isDisease) {
+        return "<b>정상</b>으로 판정되면 병해 징후가 감지되지 않은 것이에요. " +
+               "다만 초기 감염은 사진에 잘 안 보일 수 있으니 며칠 간격으로 다시 촬영해 보시길 권합니다.";
+      }
+      if (/원인|이유|왜/.test(t))             return `<b>${key} – 발생 원인</b><br>${d.cause}`;
+      if (/증상|특징|모양|구별|생김/.test(t)) return `<b>${key} – 주요 증상</b><br>${d.symptoms}`;
+      if (/예방|방지|막/.test(t)) {
+        return `<b>${key} – 예방 방법</b>${actionList(d.actions.filter(a => a.type === "prevent"))}`;
+      }
+      if (/처리|방법|대처|치료|조치|제거|없애|어떻게/.test(t)) {
+        return `<b>${key} – 처리 방법</b>${actionList(d.actions.filter(a => a.type !== "prevent"))}`;
+      }
+      // 병 이름만 물었을 때 → 요약
+      return `<b>${key}</b><br>${d.cause}<br><br><b>즉시 할 일</b>` +
+             actionList(d.actions.filter(a => a.type === "urgent")) +
+             "'원인', '증상', '처리 방법', '예방법'을 붙여 물어보시면 더 자세히 알려드려요.";
+    }
+
+    // 사진 촬영 요령
+    if (/사진|촬영|찍/.test(t)) {
+      return "<b>정확한 진단을 위한 촬영 요령</b><ol>" +
+             "<li>밝은 곳에서, 그림자가 지지 않게 찍어 주세요.</li>" +
+             "<li>버섯 갓 전체가 화면에 들어오게 찍어 주세요.</li>" +
+             "<li>흔들리지 않게, 초점이 맞았는지 확인해 주세요.</li>" +
+             "<li>배경은 단순할수록 좋아요.</li>" +
+             "<li>의심 부위가 있으면 가까이서 한 장 더 찍어 비교해 보세요.</li></ol>";
+    }
+    // 정확도
+    if (/정확|신뢰|믿|확률|퍼센트|%/.test(t)) {
+      return "화면의 %는 <b>AI가 사진을 보고 각 항목이라고 판단한 확신 정도</b>예요. 실제 감염 비율을 뜻하지는 않아요.<br>" +
+             "조명·각도·초점에 따라 달라질 수 있고, 학습하지 않은 병해는 구별하지 못합니다. " +
+             "결과가 애매하면 다시 촬영하거나 전문가 확인을 받아 주세요.";
+    }
+    // 진단 가능한 병
+    if (/어떤병|무슨병|종류|진단가능|뭘|무엇|목록/.test(t)) {
+      const list = Object.keys(DISEASE_DB).filter(k => DISEASE_DB[k].isDisease)
+                         .map(k => `<li>${DISEASE_DB[k].icon} ${k}</li>`).join("");
+      return `현재 안내할 수 있는 병해는 다음과 같아요.<ul>${list}</ul>` +
+             "※ 실제 판정은 AI 모델이 학습한 항목 안에서만 이루어집니다.";
+    }
+    // 사용법
+    if (/사용|쓰는법|이용|어떻게/.test(t)) {
+      return "<b>사용 방법</b><ol>" +
+             "<li>📸 카메라 촬영 또는 🖼️ 갤러리 선택으로 버섯 사진을 올립니다.</li>" +
+             "<li>🔬 AI 병해 분석 시작을 누릅니다.</li>" +
+             "<li>결과와 처리 방법을 확인하고, 필요하면 PDF로 저장합니다.</li></ol>";
+    }
+
+    // 알아듣지 못했을 때
+    return "죄송해요, 질문을 정확히 이해하지 못했어요. 😅<br>이렇게 물어봐 주세요." +
+           "<ul><li>방금 진단 결과 설명해줘</li><li>갈반병 원인 / 증상 / 처리 방법 / 예방법</li>" +
+           "<li>사진 잘 찍는 법</li><li>진단 기록 보는 법</li></ul>" +
+           "그 밖의 내용은 버섯 재배 전문가에게 문의해 주세요.";
+  }
+
   function resetAll() {
     document.getElementById("previewImg").src              = "";
     document.getElementById("previewWrap").style.display   = "none";
@@ -1310,6 +2356,8 @@
     document.getElementById("debugPanel").style.display    = "none";
     document.getElementById("debugPanel").innerHTML        = "";
     document.getElementById("fileInput").value             = "";
+    document.getElementById("viewingBanner").style.display = "none";
+    currentRecord = null;
     showLoading(false);
     window.scrollTo({ top:0, behavior:"smooth" });
   }

@@ -1641,6 +1641,8 @@
   const YOLO_DISEASE_CLASS = 0;         // 병해 클래스 번호 (galban)
 
   let yoloSession = null;               // 불러온 YOLO 모델
+  let yoloImgsz   = YOLO_IMGSZ;         // 실제 모델이 원하는 이미지 크기 (불러올 때 자동 확인)
+  let yoloProblem = "";                 // 모델 파일에 문제가 있을 때 이유
   let yoloReady   = Promise.resolve();  // YOLO 불러오기가 끝날 때까지 기다리는 용도
 
   // 이 앱의 인터넷 주소 (QR코드, PDF 하단에 사용)
@@ -1687,9 +1689,41 @@
       ort.env.wasm.wasmPaths  = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
       ort.env.wasm.numThreads = 1;      // GitHub Pages에서 안정적으로 동작하도록 1개로
       yoloSession = await ort.InferenceSession.create(YOLO_MODEL_URL, { executionProviders: ["wasm"] });
+      await validateYolo();   // 올바른 모델 파일인지 점검
     } catch (err) {
       yoloSession = null;
-      console.warn("YOLO 모델을 불러오지 못했습니다 (보조 모델만 사용):", err);
+      yoloProblem = err.message;
+      console.warn("YOLO 모델을 사용할 수 없습니다 (보조 모델만 사용):", err.message);
+    }
+  }
+
+  /**
+   * 불러온 모델이 이 앱에 맞는지 점검합니다.
+   *  - 이미지 크기: 모델이 원하는 크기를 자동으로 찾아 맞춤
+   *  - 클래스 수: 갈반병·정상 2개가 아니면 다른 모델 파일로 보고 사용하지 않음
+   */
+  async function validateYolo() {
+    const tryRun = async (S) => {
+      const feeds = {};
+      feeds[yoloSession.inputNames[0]] = new ort.Tensor("float32", new Float32Array(3 * S * S), [1, 3, S, S]);
+      return (await yoloSession.run(feeds))[yoloSession.outputNames[0]];
+    };
+    let out;
+    try {
+      out = await tryRun(yoloImgsz);
+    } catch (err) {
+      const m = String(err.message).match(/Expected:\s*(\d+)/);
+      if (!m) throw err;
+      yoloImgsz = parseInt(m[1], 10);      // 모델이 원하는 크기로 바꿔서 다시 시도
+      out = await tryRun(yoloImgsz);
+    }
+    const nc = out.dims[1] - 4;
+    if (nc !== YOLO_CLASSES.length) {
+      throw new Error(`모델의 클래스 수(${nc}개)가 이 앱(${YOLO_CLASSES.length}개: 갈반병·정상)과 다릅니다. ` +
+                      "갈반병 학습 결과가 아닌 다른 best.onnx가 올라간 것 같습니다.");
+    }
+    if (yoloImgsz !== YOLO_IMGSZ) {
+      console.warn(`YOLO 이미지 크기를 모델에 맞춰 ${yoloImgsz}로 사용합니다.`);
     }
   }
 
@@ -1697,6 +1731,11 @@
   function updateModelStatus() {
     const st = document.getElementById("modelStatus");
     st.textContent = `${yoloSession ? "✓" : "✕"} head 탐지 · ${isModelLoaded ? "✓" : "✕"} 전체 판정`;
+    // 모델 파일이 잘못 올라간 경우 화면에 이유를 표시
+    if (yoloProblem.includes("클래스 수")) {
+      st.textContent += " (⚠ best.onnx 파일 확인 필요)";
+      st.title = yoloProblem;
+    }
     st.style.color = (yoloSession || isModelLoaded) ? "" : "#f87171";
     document.getElementById("classCount").textContent =
       (yoloSession ? "갈반병·정상 head" : "") +
@@ -1722,7 +1761,7 @@
    * 돌려주는 값: [{ c: 클래스번호, score: 점수, x1, y1, x2, y2 (원본 사진 좌표) }, ...]
    */
   async function runYolo(img) {
-    const S = YOLO_IMGSZ;
+    const S = yoloImgsz;
     const w = img.naturalWidth, h = img.naturalHeight;
 
     // 1) 비율을 유지한 채 S×S 정사각형 안에 넣고 남는 곳은 회색으로 채움 (학습 때와 같은 방식)

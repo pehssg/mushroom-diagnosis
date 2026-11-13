@@ -331,6 +331,8 @@
        📊 결과 영역
        ════════════════════════════════════════════ */
     #resultSection { display: none; }
+    /* 결과로 화면이 이동할 때 상단 탭 메뉴에 제목이 가리지 않도록 */
+    #resultSection, #batchSection { scroll-margin-top: 72px; }
 
     /* 최고 신뢰도 결과 강조 박스 */
     .top-result {
@@ -985,6 +987,157 @@
       cursor: pointer;
       font-family: inherit;
     }
+    /* ════════════════════════════════════════════
+       🖼 여러 장 업로드 – 분석 대기 사진 목록
+       ════════════════════════════════════════════ */
+    .pending-wrap { display: none; margin-top: 18px; }
+    .pending-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent-green);
+      margin-bottom: 10px;
+    }
+    .pending-clear {
+      background: transparent;
+      border: none;
+      color: var(--text-sub);
+      font-size: 12px;
+      cursor: pointer;
+      font-family: inherit;
+      text-decoration: underline;
+    }
+    .pending-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);   /* 한 줄에 4장 */
+      gap: 8px;
+    }
+    .pending-item {
+      position: relative;
+      aspect-ratio: 1 / 1;                     /* 정사각형 칸 */
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      background: #000;
+    }
+    .pending-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+    .pending-num {
+      position: absolute; left: 4px; top: 4px;
+      background: rgba(0,0,0,0.7);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 700;
+      padding: 1px 6px;
+      border-radius: 8px;
+    }
+    .pending-del {
+      position: absolute; right: 3px; top: 3px;
+      width: 22px; height: 22px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0,0,0,0.75);
+      color: #fff;
+      font-size: 12px;
+      cursor: pointer;
+      line-height: 22px;
+      padding: 0;
+    }
+
+    /* ════════════════════════════════════════════
+       📊 여러 장 분석 결과 요약
+       ════════════════════════════════════════════ */
+    .batch-summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+    .batch-chip {
+      flex: 1 1 90px;
+      border-radius: 12px;
+      padding: 12px 10px;
+      text-align: center;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border);
+    }
+    .batch-chip .num  { font-size: 24px; font-weight: 900; line-height: 1.1; }
+    .batch-chip .lbl  { font-size: 11px; color: var(--text-sub); margin-top: 4px; }
+    .batch-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      background: rgba(255,255,255,0.02);
+    }
+    .batch-item:hover { border-color: var(--accent-green); }
+    .batch-item.disease { border-left: 3px solid var(--accent-red); }
+    .batch-thumb { width: 60px; height: 60px; border-radius: 8px; object-fit: cover; flex-shrink: 0; }
+    .batch-info { flex: 1; min-width: 0; }
+    .batch-no   { font-size: 11px; color: var(--text-sub); }
+    .batch-name { font-size: 14px; font-weight: 700; margin: 2px 0 6px; }
+    .batch-bar  { height: 6px; background: rgba(255,255,255,0.06); border-radius: 99px; overflow: hidden; }
+    .batch-bar div { height: 100%; border-radius: 99px; }
+    .batch-pct  { font-size: 16px; font-weight: 900; }
+    .batch-arrow { color: var(--text-sub); font-size: 18px; }
+
+    /* 상세 결과 화면의 사진 */
+    .detail-img {
+      width: 100%;
+      max-height: 280px;
+      object-fit: contain;
+      border-radius: 12px;
+      background: #000;
+      margin-bottom: 16px;
+      display: block;
+    }
+    /* '전체 결과로 돌아가기' 버튼 */
+    .btn-back {
+      display: none;
+      width: 100%;
+      padding: 12px;
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      border-radius: 12px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      font-family: inherit;
+      margin-bottom: 12px;
+    }
+
+    /* 일괄 결과서(PDF) 표 */
+    #pdfReport .rp-sum { display: flex; gap: 10px; margin-bottom: 18px; }
+    #pdfReport .rp-sum div {
+      flex: 1;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 12px;
+      text-align: center;
+    }
+    #pdfReport .rp-sum b { display: block; font-size: 26px; }
+    #pdfReport .rp-sum span { font-size: 12px; color: #6b7280; }
+    #pdfReport .rp-batch th {
+      background: #f1f5f9;
+      font-size: 12px;
+      padding: 8px 6px;
+      text-align: left;
+    }
+    #pdfReport .rp-batch td { font-size: 13px; vertical-align: middle; }
+    #pdfReport .rp-batch img {
+      width: 70px; height: 70px;
+      object-fit: cover;
+      border-radius: 6px;
+      display: block;
+    }
+    #pdfReport .rp-page { text-align: right; font-size: 11px; color: #9ca3af; margin-top: 10px; }
+
     /* AI 답변 표시 꼬리표 */
     .ai-tag {
       display: inline-block;
@@ -1105,14 +1258,15 @@
       <span class="upload-icon">🍄</span>
       <div class="upload-text">버섯 사진을 올려주세요</div>
       <div class="upload-subtext">
-        아래 버튼으로 카메라 촬영 또는<br>갤러리에서 사진을 선택하세요
+        갤러리에서 <u>여러 장을 한 번에</u> 고르거나,<br>카메라로 한 장씩 찍어 모은 뒤 한 번에 분석할 수 있어요
       </div>
       <!-- PC용 드래그 안내 -->
       <div class="drag-hint">⬇ 파일을 여기에 끌어다 놓아도 됩니다</div>
     </div>
 
     <!-- 실제 파일 선택 input (화면에 숨겨져 있음) -->
-    <input type="file" id="fileInput" accept="image/*"
+    <!-- multiple: 여러 장을 한 번에 고를 수 있게 함 -->
+    <input type="file" id="fileInput" accept="image/*" multiple
            onchange="handleFileSelect(event)">
 
     <!-- 카메라 / 갤러리 버튼 -->
@@ -1121,10 +1275,13 @@
       <button class="btn btn-gallery" onclick="openGallery()">🖼️ 갤러리 선택</button>
     </div>
 
-    <!-- 이미지 미리보기 (사진 올리기 전엔 숨겨짐) -->
-    <div class="preview-wrap" id="previewWrap">
-      <img id="previewImg" src="" alt="업로드된 버섯 사진">
-      <div class="preview-badge">✓ 사진 로드 완료</div>
+    <!-- 분석을 기다리는 사진들 (사진을 올리면 나타남) -->
+    <div class="pending-wrap" id="pendingWrap">
+      <div class="pending-head">
+        <span id="pendingCount">0장 선택됨</span>
+        <button class="pending-clear" onclick="clearPending()">모두 빼기</button>
+      </div>
+      <div class="pending-grid" id="pendingGrid"></div>
     </div>
 
     <!-- 분석 버튼 (사진 올린 후 나타남) -->
@@ -1138,7 +1295,7 @@
     <div class="loading-wrap" id="loadingWrap">
       <div class="spinner"></div>
       <div class="loading-text">
-        AI가 분석 중입니다<br>
+        <span id="loadingText">AI가 분석 중입니다</span><br>
         <span class="loading-dots">
           <span>.</span><span>.</span><span>.</span>
         </span>
@@ -1146,15 +1303,35 @@
     </div>
   </div>
 
-  <!-- ④ 결과 영역 (분석 완료 후 나타남) -->
+  <!-- ④-1 여러 장 분석 결과 요약 (2장 이상 분석했을 때) -->
+  <div id="batchSection" style="display:none;">
+    <div class="card">
+      <div class="card-title"><span>📊</span> 전체 분석 결과</div>
+      <div class="batch-summary" id="batchSummary"></div>
+      <div style="font-size:12px;color:var(--text-sub);margin-bottom:10px;">
+        사진을 누르면 원인·처리 방법 등 상세 결과를 볼 수 있어요
+      </div>
+      <div id="batchList"></div>
+    </div>
+    <button class="btn-pdf" id="batchPdfBtn" onclick="exportBatchPDF()">📄 전체 결과서 PDF 저장</button>
+    <button class="btn-retry" onclick="resetAll()">🔄 새로 시작하기</button>
+  </div>
+
+  <!-- ④-2 결과 상세 영역 (사진 1장 결과) -->
   <div id="resultSection">
 
-    <!-- 진단 기록에서 다시 열었을 때만 보이는 안내띠 -->
+    <!-- 여러 장 결과에서 들어왔을 때 돌아가는 버튼 -->
+    <button class="btn-back" id="backToBatchBtn" onclick="backToBatch()">← 전체 결과로 돌아가기</button>
+
+    <!-- 몇 번째 사진인지, 또는 기록에서 연 것인지 알려주는 안내띠 -->
     <div class="viewing-banner" id="viewingBanner"></div>
 
     <!-- 확률 게이지 바 카드 -->
     <div class="card">
       <div class="card-title"><span>🎯</span> 진단 결과</div>
+
+      <!-- 이 결과의 사진 -->
+      <img class="detail-img" id="detailImg" src="" alt="진단 사진">
 
       <!-- 1등 결과 강조 -->
       <div class="top-result" id="topResult">
@@ -1208,7 +1385,7 @@
     </div>
 
     <!-- 다시 분석 버튼 -->
-    <button class="btn-retry" onclick="resetAll()">🔄 다시 분석하기</button>
+    <button class="btn-retry" onclick="resetAll()">🔄 새로 시작하기</button>
   </div>
 
   </div>
@@ -1233,7 +1410,7 @@
         <span class="notice-text">
           기록은 <u>지금 사용 중인 기기의 이 브라우저에만</u> 저장됩니다.
           다른 폰·PC에서는 보이지 않고, 브라우저 데이터를 지우면 함께 삭제됩니다.
-          최근 30건까지 보관됩니다.
+          최근 50건까지 보관됩니다.
         </span>
       </div>
     </div>
@@ -1425,7 +1602,12 @@
 
   // 진단 기록을 브라우저에 저장할 때 쓰는 이름표(key)와 최대 보관 개수
   const HISTORY_KEY = "mushroomDiagnosisHistory";
-  const HISTORY_MAX = 30;
+  const HISTORY_MAX = 50;
+
+  // 한 번에 분석할 수 있는 최대 사진 수 (휴대폰 메모리 보호)
+  const MAX_PHOTOS = 20;
+  let pending = [];        // 분석을 기다리는 사진들
+  let batchRecords = [];   // 방금 분석한 사진들의 결과
 
   // 지금 화면에 보이는 진단 결과 (PDF 저장, 챗봇 설명에 사용)
   let currentRecord = null;
@@ -1486,28 +1668,31 @@
   }
 
   /**
-   * 파일을 영역에 떨어뜨렸을 때 실행 – 파일을 받아서 미리보기 처리
+   * 파일을 영역에 떨어뜨렸을 때 실행 – 여러 장 모두 받기
    */
   function handleDrop(event) {
     event.preventDefault();
     event.stopPropagation();
     document.getElementById("uploadZone").classList.remove("drag-over");
-
-    // event.dataTransfer.files → 드래그해서 놓은 파일 목록
-    const files = event.dataTransfer.files;
-    if (!files || files.length === 0) return;
-
-    const file = files[0]; // 첫 번째 파일만 사용
-
-    // 이미지 파일인지 확인합니다 (file.type: "image/jpeg", "image/png" 등)
-    if (!file.type.startsWith("image/")) {
-      alert("이미지 파일만 업로드할 수 있습니다.\n(jpg, png, gif, webp 등)");
-      return;
-    }
-
-    // 파일을 미리보기로 표시하는 공통 함수 호출
-    loadImagePreview(file);
+    addFiles(event.dataTransfer.files);
   }
+
+  /** 끌고 온 것이 파일인지 확인 */
+  function hasFiles(event) {
+    return event.dataTransfer && [...event.dataTransfer.types].includes("Files");
+  }
+
+  // 점선 박스가 아닌 곳에 사진을 놓아도
+  // 브라우저가 사진을 열어버리지 않고 업로드되도록 함
+  window.addEventListener("dragover", (e) => {
+    if (hasFiles(e)) e.preventDefault();
+  });
+  window.addEventListener("drop", (e) => {
+    if (!hasFiles(e)) return;
+    e.preventDefault();
+    switchTab("diagnose");
+    addFiles(e.dataTransfer.files);
+  });
 
   // ════════════════════════════════════════════════════
   // 📷 카메라 / 갤러리 버튼
@@ -1525,41 +1710,115 @@
     input.click();
   }
 
-  /** 파일 input에서 파일 선택 시 실행 */
+  /** 파일 선택창에서 사진을 고른 뒤 실행 */
   function handleFileSelect(event) {
-    const file = event.target.files[0];
-    if (!file) return;
-    loadImagePreview(file);
+    const files = [...event.target.files];   // 고른 사진들을 먼저 복사
+    event.target.value = "";                 // 비워 둬야 같은 사진을 다시 골라도 반응함
+    addFiles(files);
   }
 
   // ════════════════════════════════════════════════════
-  // 🖼️ 이미지 미리보기 공통 함수
-  // (드래그&드롭 / 파일선택 양쪽에서 호출)
+  // 🖼️ 분석 대기 사진 관리 (여러 장)
   // ════════════════════════════════════════════════════
 
-  /**
-   * File 객체를 받아 미리보기 이미지로 표시하고
-   * 분석 버튼을 화면에 나타냅니다
-   * @param {File} file - 표시할 이미지 파일
-   */
-  function loadImagePreview(file) {
-    const reader = new FileReader();
+  /** 사진 파일을 줄인 이미지(글자 형태)로 바꿉니다 */
+  function fileToThumbnail(file, maxSize) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload  = () => resolve(makeThumbnail(img, maxSize));
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 
-    // 파일 읽기 완료 시 실행
-    reader.onload = (e) => {
-      currentRecord = null;   // 새 사진이므로 이전 결과는 해제
-      document.getElementById("previewImg").src = e.target.result;
-      document.getElementById("previewWrap").style.display = "block";
-      document.getElementById("analyzeBtn").style.display  = "flex";
-      document.getElementById("resultSection").style.display = "none";
-      document.getElementById("diseaseInfoSection").innerHTML = "";
-    };
+  /** 글자 형태의 이미지를 <img>로 불러옵니다 (AI 분석용) */
+  function loadImage(src) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload  = () => resolve(img);
+      img.onerror = reject;
+      img.src = src;
+    });
+  }
 
-    reader.readAsDataURL(file); // 파일을 Base64 문자열로 읽기
+  /** 사진 추가 (갤러리·카메라·끌어다 놓기 공통) */
+  async function addFiles(fileList) {
+    const files = [...(fileList || [])].filter(f => f.type.startsWith("image/"));
+    if (files.length === 0) {
+      if (fileList && fileList.length) alert("이미지 파일만 올릴 수 있습니다.\n(jpg, png 등)");
+      return;
+    }
+
+    // 이전 분석 결과가 화면에 있으면 → 새 분석으로 자동 전환
+    if (batchRecords.length || currentRecord) clearResults();
+
+    const room = MAX_PHOTOS - pending.length;
+    if (room <= 0) {
+      alert(`한 번에 최대 ${MAX_PHOTOS}장까지 분석할 수 있습니다.`);
+      return;
+    }
+    if (files.length > room) {
+      alert(`한 번에 최대 ${MAX_PHOTOS}장까지 분석할 수 있어 ${room}장만 추가합니다.`);
+    }
+
+    for (const f of files.slice(0, room)) {
+      try {
+        pending.push({ name: f.name, image: await fileToThumbnail(f, 480) });
+      } catch (err) {
+        console.error("사진을 읽지 못했습니다:", f.name, err);
+      }
+    }
+    renderPending();
+  }
+
+  /** 분석 대기 사진 목록을 화면에 그립니다 */
+  function renderPending() {
+    const n = pending.length;
+    document.getElementById("pendingWrap").style.display = n ? "block" : "none";
+    document.getElementById("analyzeBtn").style.display  = n ? "flex"  : "none";
+    document.getElementById("pendingCount").textContent  = `${n}장 선택됨 (최대 ${MAX_PHOTOS}장)`;
+    document.getElementById("analyzeBtn").textContent =
+      n > 1 ? `🔬 ${n}장 한 번에 AI 분석 시작` : "🔬 AI 병해 분석 시작";
+
+    document.getElementById("pendingGrid").innerHTML = pending.map((p, i) => `
+      <div class="pending-item">
+        <img src="${p.image}" alt="">
+        <span class="pending-num">${i + 1}</span>
+        <button class="pending-del" onclick="removePending(${i})" title="빼기">✕</button>
+      </div>`).join("");
+  }
+
+  /** 대기 사진 한 장 빼기 */
+  function removePending(i) {
+    pending.splice(i, 1);
+    renderPending();
+  }
+
+  /** 대기 사진 모두 빼기 */
+  function clearPending() {
+    pending = [];
+    renderPending();
+  }
+
+  /** 화면의 분석 결과만 지웁니다 (기록은 그대로 남음) */
+  function clearResults() {
+    batchRecords  = [];
+    currentRecord = null;
+    document.getElementById("batchSection").style.display   = "none";
+    document.getElementById("resultSection").style.display  = "none";
+    document.getElementById("viewingBanner").style.display  = "none";
+    document.getElementById("backToBatchBtn").style.display = "none";
+    document.getElementById("diseaseInfoSection").innerHTML = "";
+    document.getElementById("debugPanel").style.display     = "none";
   }
 
   // ════════════════════════════════════════════════════
-  // 🔬 AI 분석 실행
+  // 🔬 AI 분석 실행 (여러 장을 차례로)
   // ════════════════════════════════════════════════════
 
   async function runAnalysis() {
@@ -1567,36 +1826,155 @@
       alert("AI 모델을 로드 중입니다. 잠시 후 다시 시도해 주세요.");
       return;
     }
+    if (pending.length === 0) {
+      alert("먼저 사진을 올려 주세요.");
+      return;
+    }
+
+    const items   = pending.slice();     // 분석할 사진들
+    const batchId = Date.now();          // 이번 묶음 번호
+    const records = [];
 
     document.getElementById("analyzeBtn").style.display = "none";
     showLoading(true);
 
     try {
-      const imgElement = document.getElementById("previewImg");
-      const predictions = await model.predict(imgElement); // AI 분석 실행
+      for (let i = 0; i < items.length; i++) {
+        // 진행 상황 표시 (예: 3/10)
+        document.getElementById("loadingText").textContent =
+          items.length > 1 ? `AI가 분석 중입니다 (${i + 1}/${items.length})` : "AI가 분석 중입니다";
 
-      // 진단 결과 한 건을 '기록' 형태로 묶습니다
-      const record = {
-        id: Date.now(),                          // 고유번호 (현재 시각)
-        date: new Date().toISOString(),          // 진단 일시
-        image: makeThumbnail(imgElement, 480),   // 사진 (용량을 줄인 버전)
-        predictions: predictions.map(p => ({     // 각 클래스별 확률
-          className: p.className,
-          probability: p.probability
-        }))
-      };
-      currentRecord = record;   // 지금 보고 있는 결과로 지정
-      saveToHistory(record);    // 진단 기록에 저장
+        const img = await loadImage(items[i].image);
+        const predictions = await model.predict(img);   // ★ AI 분석
 
-      showLoading(false);
-      document.getElementById("viewingBanner").style.display = "none";
-      displayResults(record.predictions);
+        records.push({
+          id: batchId + i,                    // 고유번호
+          batchId,                            // 같이 분석한 묶음 번호
+          date: new Date().toISOString(),     // 진단 일시
+          image: items[i].image,              // 사진 (줄인 버전)
+          predictions: predictions.map(p => ({ className: p.className, probability: p.probability }))
+        });
+      }
     } catch (err) {
       console.error("분석 오류:", err);
-      showLoading(false);
-      alert("분석 중 오류가 발생했습니다: " + err.message);
-      document.getElementById("analyzeBtn").style.display = "flex";
+      alert("분석 중 오류가 발생했습니다: " + err.message +
+            (records.length ? `\n분석이 끝난 ${records.length}장의 결과만 보여드립니다.` : ""));
     }
+
+    showLoading(false);
+    document.getElementById("loadingText").textContent = "AI가 분석 중입니다";
+
+    if (records.length === 0) {
+      document.getElementById("analyzeBtn").style.display = "flex";
+      return;
+    }
+
+    // 분석한 사진은 대기 목록에서 빼고, 결과는 기록에 저장
+    pending = pending.slice(records.length);
+    renderPending();
+    saveManyToHistory(records);
+
+    batchRecords = records;
+    if (records.length === 1) showDetail(records[0], {});   // 1장 → 바로 상세 결과
+    else showBatch();                                       // 여러 장 → 요약 화면
+  }
+
+  // ════════════════════════════════════════════════════
+  // 📊 여러 장 결과 요약 화면
+  // ════════════════════════════════════════════════════
+
+  /** 사진 한 장의 최고 확률 판정 정보 */
+  function topOf(record) {
+    const top  = sortPreds(record.predictions)[0];
+    const data = findInDB(top.className) || { icon: "🍄", color: "#4ade80", isDisease: false };
+    return { name: top.className, pct: Math.round(top.probability * 100), data };
+  }
+
+  /** 판정별 사진 수 세기 → { "정상": 7, "세균성갈반병": 3 } */
+  function countByClass(records) {
+    const counts = {};
+    records.forEach(r => {
+      const name = topOf(r).name;
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    return counts;
+  }
+
+  function showBatch() {
+    currentRecord = null;
+    document.getElementById("resultSection").style.display = "none";
+
+    const counts  = countByClass(batchRecords);
+    const disease = batchRecords.filter(r => topOf(r).data.isDisease).length;
+
+    // 요약 숫자 칸
+    let chips = `
+      <div class="batch-chip"><div class="num">${batchRecords.length}</div><div class="lbl">전체</div></div>
+      <div class="batch-chip" style="border-color:${disease ? "rgba(248,113,113,0.4)" : "var(--border)"}">
+        <div class="num" style="color:${disease ? "var(--accent-red)" : "var(--accent-green)"}">${disease}</div>
+        <div class="lbl">병해 의심</div></div>`;
+    for (const name of Object.keys(counts)) {
+      const d = findInDB(name) || { icon: "🍄", color: "#94a3b8" };
+      chips += `<div class="batch-chip"><div class="num" style="color:${d.color}">${counts[name]}</div>
+                <div class="lbl">${d.icon} ${escapeHTML(name)}</div></div>`;
+    }
+    document.getElementById("batchSummary").innerHTML = chips;
+
+    // 사진별 결과 목록
+    document.getElementById("batchList").innerHTML = batchRecords.map((r, i) => {
+      const t = topOf(r);
+      return `
+        <div class="batch-item ${t.data.isDisease ? "disease" : ""}" onclick="showBatchItem(${i})">
+          <img class="batch-thumb" src="${r.image}" alt="">
+          <div class="batch-info">
+            <div class="batch-no">${i + 1}번 사진</div>
+            <div class="batch-name">${t.data.icon} ${escapeHTML(t.name)}</div>
+            <div class="batch-bar"><div style="width:${t.pct}%;background:${t.data.color}"></div></div>
+          </div>
+          <div class="batch-pct" style="color:${t.data.color}">${t.pct}%</div>
+          <span class="batch-arrow">›</span>
+        </div>`;
+    }).join("");
+
+    document.getElementById("batchSection").style.display = "block";
+    document.getElementById("batchSection").scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  /** 요약 목록에서 사진 하나를 눌렀을 때 */
+  function showBatchItem(i) {
+    showDetail(batchRecords[i], { batchIndex: i });
+  }
+
+  /** 상세 결과에서 '전체 결과로 돌아가기' */
+  function backToBatch() {
+    showBatch();
+  }
+
+  /**
+   * 사진 1장의 상세 결과를 보여줍니다
+   * opts.batchIndex : 여러 장 중 몇 번째인지 (있으면 돌아가기 버튼 표시)
+   * opts.history    : 진단 기록에서 연 경우 true
+   */
+  function showDetail(record, opts) {
+    currentRecord = record;
+    document.getElementById("detailImg").src = record.image;
+    document.getElementById("batchSection").style.display = "none";
+
+    const inBatch = (opts.batchIndex !== undefined);
+    document.getElementById("backToBatchBtn").style.display = inBatch ? "block" : "none";
+
+    const banner = document.getElementById("viewingBanner");
+    if (inBatch) {
+      banner.textContent = `📷 ${opts.batchIndex + 1}번 사진 결과 (전체 ${batchRecords.length}장 중)`;
+      banner.style.display = "block";
+    } else if (opts.history) {
+      banner.textContent = `📋 저장된 기록을 보고 있습니다 · ${formatDate(record.date)}`;
+      banner.style.display = "block";
+    } else {
+      banner.style.display = "none";
+    }
+
+    displayResults(record.predictions);
   }
 
   // ════════════════════════════════════════════════════
@@ -1975,6 +2353,12 @@
     renderHistory();
   }
 
+  /** 여러 장의 결과를 한 번에 기록에 저장 (사진 순서 유지) */
+  function saveManyToHistory(records) {
+    writeHistory(records.concat(loadHistory()).slice(0, HISTORY_MAX));
+    renderHistory();
+  }
+
   /** 기록 목록을 화면에 그립니다 */
   function renderHistory() {
     const list = loadHistory();
@@ -2014,18 +2398,8 @@
     if (!record) return;
 
     switchTab("diagnose");
-    currentRecord = record;
-
-    // 사진과 결과 다시 표시
-    document.getElementById("previewImg").src = record.image;
-    document.getElementById("previewWrap").style.display = "block";
-    document.getElementById("analyzeBtn").style.display  = "none";
-
-    const banner = document.getElementById("viewingBanner");
-    banner.textContent = `📋 저장된 기록을 보고 있습니다 · ${formatDate(record.date)}`;
-    banner.style.display = "block";
-
-    displayResults(record.predictions);
+    clearResults();
+    showDetail(record, { history: true });
   }
 
   /** 기록 하나 삭제 */
@@ -2200,6 +2574,130 @@
   }
 
   // ════════════════════════════════════════════════════
+  // 📄 여러 장 전체 결과서 PDF
+  //   페이지마다 따로 그림으로 찍어서 표가 중간에 잘리지 않게 합니다
+  // ════════════════════════════════════════════════════
+
+  /** 페이지 위쪽 제목 */
+  function batchHeader(date) {
+    return `
+      <div class="rp-head">
+        <div class="rp-title">🍄 버섯 병해 AI 일괄 진단 결과서</div>
+        <div class="rp-meta">진단 일시: ${formatDate(date)}</div>
+      </div>`;
+  }
+
+  /** 결과서 페이지들(HTML) 만들기 */
+  function buildBatchPages(records) {
+    const sevMap = {
+      high:   { text: "위험", bg: "#fee2e2", fg: "#b91c1c" },
+      medium: { text: "주의", bg: "#fef3c7", fg: "#b45309" },
+      low:    { text: "정상", bg: "#dcfce7", fg: "#15803d" }
+    };
+    const head = `<tr><th style="width:40px">No.</th><th style="width:84px">사진</th>
+                  <th>판정</th><th style="width:60px">확률</th><th style="width:70px">위험도</th><th>2순위</th></tr>`;
+    const row = (r, i) => {
+      const s   = sortPreds(r.predictions);
+      const t   = topOf(r);
+      const sev = sevMap[t.data.severity] || sevMap.low;
+      const second = s[1] ? `${escapeHTML(s[1].className)} ${Math.round(s[1].probability * 100)}%` : "-";
+      const name = t.data.isDisease ? `<u><b>${escapeHTML(t.name)}</b></u>` : escapeHTML(t.name);
+      return `<tr><td>${i + 1}</td><td><img src="${r.image}"></td><td>${t.data.icon} ${name}</td>
+              <td style="font-weight:700;color:${t.data.color}">${t.pct}%</td>
+              <td><span class="rp-badge" style="background:${sev.bg};color:${sev.fg};font-size:11px">${sev.text}</span></td>
+              <td style="color:#6b7280">${second}</td></tr>`;
+    };
+
+    const pages  = [];
+    const date   = records[0].date;
+    const counts = countByClass(records);
+    const sickN  = records.filter(r => topOf(r).data.isDisease).length;
+
+    // 1쪽: 요약 + 앞쪽 사진 7장
+    let sum = `<div class="rp-sum">
+      <div><b>${records.length}</b><span>전체</span></div>
+      <div><b style="color:${sickN ? "#b91c1c" : "#15803d"}"><u>${sickN}</u></b><span>병해 의심</span></div>`;
+    for (const n of Object.keys(counts)) {
+      const d = findInDB(n) || { color: "#374151" };
+      sum += `<div><b style="color:${d.color}">${counts[n]}</b><span>${escapeHTML(n)}</span></div>`;
+    }
+    sum += "</div>";
+
+    const FIRST = 7, REST = 9;
+    let idx = 0;
+    while (idx < records.length) {
+      const size  = pages.length === 0 ? FIRST : REST;
+      const chunk = records.slice(idx, idx + size);
+      pages.push(batchHeader(date) +
+        (pages.length === 0 ? sum : "") +
+        `<table class="rp-batch">${head}${chunk.map((r, k) => row(r, idx + k)).join("")}</table>`);
+      idx += size;
+    }
+
+    // 마지막 쪽: 발견된 병해의 처리 안내
+    const found = [...new Set(records.map(r => topOf(r)).filter(t => t.data.isDisease).map(t => t.name))];
+    let guide = "";
+    for (const name of found) {
+      const d = findInDB(name);
+      const acts = d.actions.filter(a => a.type !== "prevent").map(a =>
+        a.type === "urgent" ? `<li><u><b>[즉시]</b> ${a.text}</u></li>` : `<li>${a.text}</li>`).join("");
+      guide += `<div class="rp-sec-title">${d.icon} ${escapeHTML(name)}</div>
+                <div class="rp-text"><b>원인</b> ${d.cause}</div><ol>${acts}</ol>`;
+    }
+    pages.push(batchHeader(date) +
+      (guide ? `<div class="rp-sec-title" style="font-size:18px">병해별 처리 안내</div>${guide}`
+             : `<div class="rp-sec-title">판정 의견</div><div class="rp-text">모든 사진에서 병해 징후가 감지되지 않았습니다.</div>`) +
+      `<div class="rp-notice">⚠️ 본 결과는 AI 보조 진단으로 <u><b>참고용</b></u>입니다. 정확한 진단은 전문가에게 문의하시기 바랍니다.</div>
+       <div class="rp-foot">버섯 병해 AI 진단기 · ${APP_URL}</div>`);
+
+    // 쪽 번호
+    return pages.map((p, i) => p + `<div class="rp-page">${i + 1} / ${pages.length}</div>`);
+  }
+
+  async function exportBatchPDF() {
+    if (batchRecords.length === 0) return;
+    if (typeof html2canvas === "undefined" || !window.jspdf) {
+      alert("PDF 기능을 불러오지 못했습니다.\n인터넷 연결을 확인한 뒤 새로고침해 주세요.");
+      return;
+    }
+    const btn    = document.getElementById("batchPdfBtn");
+    const report = document.getElementById("pdfReport");
+    btn.disabled = true;
+
+    try {
+      const pages = buildBatchPages(batchRecords);
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF("p", "mm", "a4");
+      const margin = 10, maxW = 190, maxH = 277;
+
+      for (let i = 0; i < pages.length; i++) {
+        btn.textContent = `⏳ PDF 만드는 중... (${i + 1}/${pages.length}쪽)`;
+        report.innerHTML = pages[i];
+        await Promise.all([...report.querySelectorAll("img")].map(img =>
+          img.complete ? Promise.resolve() : new Promise(res => { img.onload = img.onerror = res; })));
+        report.offsetHeight;
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
+
+        const canvas = await html2canvas(report, { scale: 2, backgroundColor: "#ffffff" });
+        // 한 쪽에 꼭 맞게 크기 조절
+        let w = maxW, hh = canvas.height * maxW / canvas.width;
+        if (hh > maxH) { w = w * maxH / hh; hh = maxH; }
+        if (i > 0) pdf.addPage();
+        pdf.addImage(canvas.toDataURL("image/jpeg", 0.9), "JPEG", margin + (maxW - w) / 2, margin, w, hh);
+      }
+      pdf.save(`버섯일괄진단_${batchRecords.length}장_${fileStamp(batchRecords[0].date)}.pdf`);
+
+    } catch (err) {
+      console.error("PDF 생성 오류:", err);
+      alert("PDF를 만드는 중 오류가 발생했습니다: " + err.message);
+    } finally {
+      report.innerHTML = "";
+      btn.disabled = false;
+      btn.textContent = "📄 전체 결과서 PDF 저장";
+    }
+  }
+
+  // ════════════════════════════════════════════════════
   // 💬 ③ 상담 챗봇 (규칙 기반)
   //   질문 속 단어를 보고 DISEASE_DB의 내용으로 답합니다.
   //   인터넷 AI(API)를 쓰지 않으므로 무료이고 비용·키 유출 걱정이 없습니다.
@@ -2215,7 +2713,7 @@
   // Cloudflare Worker 주소를 따옴표 안에 붙여넣으세요.
   // 예: "https://mushroom-chat.내계정.workers.dev"
   // 비워두면 AI 없이 기본 답변만 사용합니다.
-  const AI_PROXY_URL = "https://mushroom-chat.pehssg.workers.dev/";
+  const AI_PROXY_URL = "https://mushroom-chat.pehssg.workers.dev";
 
   // 이 기기에서 하루에 AI에게 물을 수 있는 최대 횟수 (무료 한도 보호)
   const AI_DAILY_LIMIT = 30;
@@ -2342,6 +2840,10 @@
       const s = sortPreds(currentRecord.predictions);
       lines.push("사용자의 최근 진단 결과: " +
         s.map(p => `${p.className} ${Math.round(p.probability * 100)}%`).join(", "));
+    } else if (batchRecords.length > 1) {
+      const counts = countByClass(batchRecords);
+      lines.push(`사용자가 사진 ${batchRecords.length}장을 한 번에 진단함. 판정별 장수: ` +
+        Object.keys(counts).map(n => `${n} ${counts[n]}장`).join(", "));
     } else {
       lines.push("사용자의 최근 진단 결과: 없음");
     }
@@ -2437,6 +2939,22 @@
 
   /** 방금(또는 기록에서 연) 진단 결과 설명 */
   function explainCurrent() {
+    // 여러 장 요약 화면을 보고 있을 때
+    if (!currentRecord && batchRecords.length > 1) {
+      const counts = countByClass(batchRecords);
+      const sick   = batchRecords
+        .map((r, i) => ({ i, t: topOf(r) }))
+        .filter(x => x.t.data.isDisease);
+      let msg = `이번에 분석한 <b>${batchRecords.length}장</b>의 결과예요.<ul>` +
+        Object.keys(counts).map(n => `<li>${escapeHTML(n)}: ${counts[n]}장</li>`).join("") + "</ul>";
+      if (sick.length) {
+        msg += "병해가 의심되는 사진: " + sick.map(x => `${x.i + 1}번`).join(", ") +
+               "<br>목록에서 사진을 누르면 처리 방법을 볼 수 있어요. 해당 버섯은 우선 격리해 주세요.";
+      } else {
+        msg += "병해 의심 사진은 없어요. 현재 관리 상태를 유지해 주세요.";
+      }
+      return msg;
+    }
     if (!currentRecord) {
       return "아직 진단 결과가 없어요. 사진을 올리고 <b>AI 병해 분석 시작</b>을 누른 뒤 다시 물어봐 주세요.";
     }
@@ -2481,7 +2999,7 @@
     }
     // 기록
     if (/기록|히스토리|이력|예전|지난/.test(t)) {
-      return "상단 <b>📋 진단 기록</b> 탭에서 최근 30건을 볼 수 있어요. 항목을 누르면 결과를 다시 볼 수 있고, 🗑️로 삭제할 수 있습니다.<br>" +
+      return "상단 <b>📋 진단 기록</b> 탭에서 최근 50건을 볼 수 있어요. 항목을 누르면 결과를 다시 볼 수 있고, 🗑️로 삭제할 수 있습니다.<br>" +
              "단, 기록은 <b>지금 쓰는 기기의 브라우저에만</b> 저장됩니다.";
     }
 
@@ -2538,7 +3056,7 @@
     // 사용법
     if (/사용법|사용방법|쓰는법|이용방법|어떻게써|어떻게사용/.test(t)) {
       return "<b>사용 방법</b><ol>" +
-             "<li>📸 카메라 촬영 또는 🖼️ 갤러리 선택으로 버섯 사진을 올립니다.</li>" +
+             "<li>📸 카메라 촬영 또는 🖼️ 갤러리 선택으로 버섯 사진을 올립니다. 갤러리에서는 여러 장(최대 20장)을 한 번에 고를 수 있어요.</li>" +
              "<li>🔬 AI 병해 분석 시작을 누릅니다.</li>" +
              "<li>결과와 처리 방법을 확인하고, 필요하면 PDF로 저장합니다.</li></ol>";
     }
@@ -2548,16 +3066,10 @@
   }
 
   function resetAll() {
-    document.getElementById("previewImg").src              = "";
-    document.getElementById("previewWrap").style.display   = "none";
-    document.getElementById("analyzeBtn").style.display    = "none";
-    document.getElementById("resultSection").style.display = "none";
-    document.getElementById("diseaseInfoSection").innerHTML = "";
-    document.getElementById("debugPanel").style.display    = "none";
-    document.getElementById("debugPanel").innerHTML        = "";
-    document.getElementById("fileInput").value             = "";
-    document.getElementById("viewingBanner").style.display = "none";
-    currentRecord = null;
+    clearResults();
+    pending = [];
+    renderPending();
+    document.getElementById("fileInput").value = "";
     showLoading(false);
     window.scrollTo({ top:0, behavior:"smooth" });
   }

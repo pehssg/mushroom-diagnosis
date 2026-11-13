@@ -985,6 +985,38 @@
       cursor: pointer;
       font-family: inherit;
     }
+    /* AI 답변 표시 꼬리표 */
+    .ai-tag {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--accent-purple);
+      background: rgba(192,132,252,0.12);
+      border: 1px solid rgba(192,132,252,0.3);
+      padding: 2px 8px;
+      border-radius: 10px;
+      margin-bottom: 6px;
+    }
+    .msg.ai { border: 1px solid rgba(192,132,252,0.25); }
+    /* 'AI에게 더 자세히 묻기' 버튼 */
+    .ai-more {
+      display: block;
+      margin-top: 8px;
+      background: rgba(192,132,252,0.1);
+      border: 1px solid rgba(192,132,252,0.35);
+      color: var(--accent-purple);
+      font-size: 12px;
+      font-weight: 700;
+      padding: 6px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .ai-more:disabled { opacity: 0.5; cursor: default; }
+    /* AI가 답을 쓰는 중 깜빡임 */
+    .msg.typing { animation: typingBlink 1.2s ease-in-out infinite; }
+    @keyframes typingBlink { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+
     .chat-input-row {
       display: flex;
       gap: 8px;
@@ -1222,7 +1254,7 @@
     <span style="font-size:24px;">🍄</span>
     <div>
       <div class="title">버섯 병해 상담봇</div>
-      <div class="sub">진단 결과·병해 원인·처리 방법 안내</div>
+      <div class="sub" id="chatSub">진단 결과·병해 원인·처리 방법 안내</div>
     </div>
   </div>
   <!-- 대화 내용이 쌓이는 곳 -->
@@ -1237,7 +1269,7 @@
   </div>
   <!-- 질문 입력칸 -->
   <div class="chat-input-row">
-    <input class="chat-input" id="chatInput" placeholder="궁금한 점을 입력하세요"
+    <input class="chat-input" id="chatInput" maxlength="300" placeholder="궁금한 점을 입력하세요"
            onkeydown="if(event.key==='Enter' && !event.isComposing) sendChat()">
     <button class="chat-send" onclick="sendChat()">전송</button>
   </div>
@@ -2173,6 +2205,24 @@
   //   인터넷 AI(API)를 쓰지 않으므로 무료이고 비용·키 유출 걱정이 없습니다.
   // ════════════════════════════════════════════════════
 
+  // ────────────────────────────────────────────────────
+  // 🤖 AI(LLM) 연결 설정 – 하이브리드 방식
+  //   평소: 아래 기본(규칙) 답변 사용
+  //   기본 답변이 모르는 질문 → 자동으로 AI가 답변
+  //   기본 답변 아래 [AI에게 더 자세히 묻기] 버튼 → 누를 때만 AI 사용
+  // ────────────────────────────────────────────────────
+
+  // Cloudflare Worker 주소를 따옴표 안에 붙여넣으세요.
+  // 예: "https://mushroom-chat.내계정.workers.dev"
+  // 비워두면 AI 없이 기본 답변만 사용합니다.
+  const AI_PROXY_URL = "https://mushroom-chat.pehssg.workers.dev/";
+
+  // 이 기기에서 하루에 AI에게 물을 수 있는 최대 횟수 (무료 한도 보호)
+  const AI_DAILY_LIMIT = 30;
+
+  let chatLog = [];        // AI에게 함께 보낼 최근 대화
+  let aiQuestions = [];    // 'AI에게 더 묻기' 버튼이 기억하는 질문들
+
   // 질문에 이런 단어가 있으면 해당 병해로 알아듣습니다 (자유롭게 추가 가능)
   const DISEASE_ALIASES = {
     "푸른곰팡이병":   ["푸른곰팡이", "푸른곰팡", "트리코데르마", "곰팡이"],
@@ -2198,13 +2248,19 @@
     const body = document.getElementById("chatBody");
     body.appendChild(div);
     body.scrollTop = body.scrollHeight;              // 맨 아래로 스크롤
+    return div;                                      // 나중에 지울 수 있도록 돌려줌
   }
 
   /** 첫 인사 */
   function initChatbot() {
     addMsg("안녕하세요! 🍄 <b>버섯 병해 상담봇</b>입니다.<br>" +
            "진단 결과 해석, 병해 원인·증상·처리·예방 방법을 안내해 드려요.<br>" +
-           "아래 버튼을 누르거나 직접 질문해 보세요.", "bot");
+           "아래 버튼을 누르거나 직접 질문해 보세요." +
+           (AI_PROXY_URL ? "<br><br>🤖 제가 모르는 질문은 <b>AI</b>가 대신 답해 드려요." : ""),
+           "bot");
+    if (AI_PROXY_URL) {
+      document.getElementById("chatSub").textContent = "기본 안내 + AI 상담";
+    }
   }
 
   /** 질문 보내기 (버튼 클릭 시 text가 함께 들어옴) */
@@ -2215,7 +2271,154 @@
     input.value = "";
     if (!document.getElementById("chatPanel").classList.contains("open")) toggleChat();
     addMsg(q, "user");
-    setTimeout(() => addMsg(botAnswer(q), "bot"), 350);   // 살짝 뒤에 답하기
+
+    const answer = botAnswer(q);   // 먼저 기본(규칙) 답변 시도
+
+    if (answer === null) {
+      // 기본 답변이 모르는 질문
+      if (AI_PROXY_URL) askAI(q);                              // → AI에게 넘김
+      else setTimeout(() => addMsg(fallbackMessage(), "bot"), 350);
+      return;
+    }
+
+    // 기본 답변으로 답하고, AI가 켜져 있으면 '더 자세히 묻기' 버튼을 붙임
+    setTimeout(() => {
+      let html = answer;
+      if (AI_PROXY_URL) {
+        const idx = aiQuestions.push(q) - 1;
+        html += `<button class="ai-more" onclick="askAIFromButton(${idx}, this)">🤖 AI에게 더 자세히 묻기</button>`;
+      }
+      addMsg(html, "bot");
+      pushLog("user", q);
+      pushLog("model", stripHTML(answer));
+    }, 350);
+  }
+
+  /** 이해하지 못한 질문에 대한 안내 */
+  function fallbackMessage() {
+    return "죄송해요, 질문을 정확히 이해하지 못했어요. 😅<br>이렇게 물어봐 주세요." +
+           "<ul><li>방금 진단 결과 설명해줘</li><li>갈반병 원인 / 증상 / 처리 방법 / 예방법</li>" +
+           "<li>사진 잘 찍는 법</li><li>진단 기록 보는 법</li></ul>" +
+           "그 밖의 내용은 버섯 재배 전문가에게 문의해 주세요.";
+  }
+
+  // ════════════════════════════════════════════════════
+  // 🤖 AI 상담 (Cloudflare Worker → Gemini)
+  // ════════════════════════════════════════════════════
+
+  /** 최근 대화 기록 (AI가 앞뒤 맥락을 이해하도록) */
+  function pushLog(role, text) {
+    chatLog.push({ role, text: String(text).slice(0, 1000) });
+    if (chatLog.length > 10) chatLog = chatLog.slice(-10);
+  }
+
+  /** HTML 태그를 지우고 글자만 남김 */
+  function stripHTML(html) {
+    const d = document.createElement("div");
+    d.innerHTML = html;
+    return d.textContent || "";
+  }
+
+  /** 오늘 AI 사용 횟수를 1 올림. 한도를 넘었으면 false */
+  function useAIQuota() {
+    const today = new Date().toISOString().slice(0, 10);
+    let u = { date: today, count: 0 };
+    try {
+      const saved = JSON.parse(localStorage.getItem("aiUsage"));
+      if (saved && saved.date === today) u = saved;
+    } catch (e) {}
+    if (u.count >= AI_DAILY_LIMIT) return false;
+    u.count++;
+    try { localStorage.setItem("aiUsage", JSON.stringify(u)); } catch (e) {}
+    return true;
+  }
+
+  /** AI에게 함께 보낼 참고 정보 (앱의 병해 정보 + 최근 진단 결과) */
+  function buildAIContext(q) {
+    const lines = [];
+    lines.push("앱이 진단하는 항목: " + Object.keys(DISEASE_DB).join(", "));
+
+    if (currentRecord) {
+      const s = sortPreds(currentRecord.predictions);
+      lines.push("사용자의 최근 진단 결과: " +
+        s.map(p => `${p.className} ${Math.round(p.probability * 100)}%`).join(", "));
+    } else {
+      lines.push("사용자의 최근 진단 결과: 없음");
+    }
+
+    // 질문에 나온 병해 + 최근 진단된 병해의 상세 정보를 함께 보냄
+    const keys = new Set();
+    const k = findDiseaseInText(q.replace(/\s+/g, "").toLowerCase());
+    if (k) keys.add(k);
+    if (currentRecord) {
+      const d = findInDB(sortPreds(currentRecord.predictions)[0].className);
+      const key = Object.keys(DISEASE_DB).find(name => DISEASE_DB[name] === d);
+      if (key) keys.add(key);
+    }
+    for (const key of keys) {
+      const d = DISEASE_DB[key];
+      if (!d || !d.isDisease) continue;
+      lines.push(`\n[${key}]\n원인: ${d.cause}\n증상: ${d.symptoms}\n처리·예방: ` +
+        d.actions.map(a => a.text).join(" / "));
+    }
+    return lines.join("\n");
+  }
+
+  /** AI 답변 글자를 화면용으로 정리 (굵게, 목록, 줄바꿈) */
+  function formatAI(text) {
+    return escapeHTML(text)
+      .replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")        // **굵게** → 굵게
+      .replace(/^\s*[-*]\s+/gm, "• ")                 // - 목록 → • 목록
+      .replace(/\n/g, "<br>");                        // 줄바꿈
+  }
+
+  /** 'AI에게 더 자세히 묻기' 버튼을 눌렀을 때 */
+  function askAIFromButton(idx, btn) {
+    btn.disabled = true;
+    btn.textContent = "🤖 AI에게 물어보는 중...";
+    askAI(aiQuestions[idx]);
+  }
+
+  /** AI에게 질문하기 */
+  async function askAI(q) {
+    if (!useAIQuota()) {
+      addMsg(`오늘 이 기기에서 쓸 수 있는 AI 질문(${AI_DAILY_LIMIT}회)을 모두 사용했어요. ` +
+             "내일 다시 이용해 주세요.<br><br>" + (botAnswer(q) || fallbackMessage()), "bot");
+      return;
+    }
+
+    const typing = addMsg("🤖 AI가 답변을 작성하고 있어요...", "bot typing");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 25000);   // 25초 넘으면 중단
+
+    try {
+      const res = await fetch(AI_PROXY_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          question: q,
+          context: buildAIContext(q),
+          history: chatLog.slice(-6)
+        }),
+        signal: controller.signal
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.answer) throw new Error(data.error || ("HTTP " + res.status));
+
+      typing.remove();
+      addMsg(`<div class="ai-tag">🤖 AI 답변 · 참고용</div><br>${formatAI(data.answer)}`, "bot ai");
+      pushLog("user", q);
+      pushLog("model", data.answer);
+
+    } catch (err) {
+      // AI 연결 실패 → 기본 답변으로 대신 안내 (챗봇이 멈추지 않게)
+      console.error("AI 오류:", err);
+      typing.remove();
+      addMsg("⚠️ AI 연결에 실패해 기본 안내로 답할게요.<br><br>" +
+             (botAnswer(q) || fallbackMessage()), "bot");
+    } finally {
+      clearTimeout(timer);
+    }
   }
 
   /** 질문에서 병해 이름 찾기 */
@@ -2285,7 +2488,7 @@
     const key = findDiseaseInText(t);
 
     // 진단 결과 설명 (병 이름 없이 '결과'를 물을 때)
-    if (!key && /결과|방금|이번|진단해석|해석/.test(t)) {
+    if (!key && /진단결과|결과설명|결과해석|방금|이번결과|이번진단|내결과/.test(t)) {
       return explainCurrent();
     }
 
@@ -2311,7 +2514,7 @@
     }
 
     // 사진 촬영 요령
-    if (/사진|촬영|찍/.test(t)) {
+    if (/사진|촬영|찍는|찍어/.test(t)) {
       return "<b>정확한 진단을 위한 촬영 요령</b><ol>" +
              "<li>밝은 곳에서, 그림자가 지지 않게 찍어 주세요.</li>" +
              "<li>버섯 갓 전체가 화면에 들어오게 찍어 주세요.</li>" +
@@ -2320,31 +2523,28 @@
              "<li>의심 부위가 있으면 가까이서 한 장 더 찍어 비교해 보세요.</li></ol>";
     }
     // 정확도
-    if (/정확|신뢰|믿|확률|퍼센트|%/.test(t)) {
+    if (/정확도|정확해|정확한가|신뢰|믿을|확률|퍼센트/.test(t)) {
       return "화면의 %는 <b>AI가 사진을 보고 각 항목이라고 판단한 확신 정도</b>예요. 실제 감염 비율을 뜻하지는 않아요.<br>" +
              "조명·각도·초점에 따라 달라질 수 있고, 학습하지 않은 병해는 구별하지 못합니다. " +
              "결과가 애매하면 다시 촬영하거나 전문가 확인을 받아 주세요.";
     }
     // 진단 가능한 병
-    if (/어떤병|무슨병|종류|진단가능|뭘|무엇|목록/.test(t)) {
+    if (/어떤병|무슨병|병종류|병의종류|진단가능|진단할수|어떤질병/.test(t)) {
       const list = Object.keys(DISEASE_DB).filter(k => DISEASE_DB[k].isDisease)
                          .map(k => `<li>${DISEASE_DB[k].icon} ${k}</li>`).join("");
       return `현재 안내할 수 있는 병해는 다음과 같아요.<ul>${list}</ul>` +
              "※ 실제 판정은 AI 모델이 학습한 항목 안에서만 이루어집니다.";
     }
     // 사용법
-    if (/사용|쓰는법|이용|어떻게/.test(t)) {
+    if (/사용법|사용방법|쓰는법|이용방법|어떻게써|어떻게사용/.test(t)) {
       return "<b>사용 방법</b><ol>" +
              "<li>📸 카메라 촬영 또는 🖼️ 갤러리 선택으로 버섯 사진을 올립니다.</li>" +
              "<li>🔬 AI 병해 분석 시작을 누릅니다.</li>" +
              "<li>결과와 처리 방법을 확인하고, 필요하면 PDF로 저장합니다.</li></ol>";
     }
 
-    // 알아듣지 못했을 때
-    return "죄송해요, 질문을 정확히 이해하지 못했어요. 😅<br>이렇게 물어봐 주세요." +
-           "<ul><li>방금 진단 결과 설명해줘</li><li>갈반병 원인 / 증상 / 처리 방법 / 예방법</li>" +
-           "<li>사진 잘 찍는 법</li><li>진단 기록 보는 법</li></ul>" +
-           "그 밖의 내용은 버섯 재배 전문가에게 문의해 주세요.";
+    // 알아듣지 못했을 때 → null (AI가 켜져 있으면 AI가 답함)
+    return null;
   }
 
   function resetAll() {
